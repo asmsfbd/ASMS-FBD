@@ -18,11 +18,8 @@ async function hasLinearBarcodeSupport(): Promise<boolean> {
 }
 
 async function loadPolyfill() {
-  // @ts-ignore — CDN import for iOS polyfill, not in node_modules
-  const { BarcodeDetectorPolyfill } = await import(
-    /* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@0.9.21/dist/es/index.js'
-  )
-    ; (window as any).BarcodeDetector = BarcodeDetectorPolyfill
+  const { BarcodeDetectorPolyfill } = await import('@undecaf/barcode-detector-polyfill')
+  ;(window as any).BarcodeDetector = BarcodeDetectorPolyfill
 }
 
 export interface BarcodeScannerHandle {
