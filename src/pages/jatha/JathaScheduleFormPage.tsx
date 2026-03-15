@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ChevronLeft, Save, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { SubCentreQuotaPanel } from '@/components/jatha/SubCentreQuotaPanel'
 
-// ── Centre sequence (exact order as specified) ──────────────────
+// ── 18 Main Centres in exact sequence ──────────────────────────
 const MAIN_CENTRES = [
   'ANKHEER',
   'BALLABGARH',
@@ -79,28 +80,31 @@ export default function JathaScheduleFormPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  // All jatha types from DB
-  const [allTypes,        setAllTypes]        = useState<JathaType[]>([])
-  // Unique destinations derived from allTypes
-  const [destinations,    setDestinations]    = useState<string[]>([])
-  // Departments filtered by selected destination
-  const [departments,     setDepartments]     = useState<string[]>([])
+  // Jatha types from DB
+  const [allTypes,       setAllTypes]       = useState<JathaType[]>([])
+  const [destinations,   setDestinations]   = useState<string[]>([])
+  const [departments,    setDepartments]    = useState<string[]>([])
 
   // Form state
-  const [selectedDest,    setSelectedDest]    = useState('')
-  const [selectedDept,    setSelectedDept]    = useState('')
-  const [selectedTypeId,  setSelectedTypeId]  = useState<number | null>(null)
-  const [fromDate,        setFromDate]        = useState('')
-  const [toDate,          setToDate]          = useState('')
-  const [totalRequired,   setTotalRequired]   = useState(0)
-  const [description,     setDescription]     = useState('')
-  const [quotas,          setQuotas]          = useState<QuotaRow[]>(
+  const [selectedDest,   setSelectedDest]   = useState('')
+  const [selectedDept,   setSelectedDept]   = useState('')
+  const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null)
+  const [fromDate,       setFromDate]       = useState('')
+  const [toDate,         setToDate]         = useState('')
+  const [totalRequired,  setTotalRequired]  = useState(0)
+  const [description,    setDescription]    = useState('')
+  const [quotas,         setQuotas]         = useState<QuotaRow[]>(
     MAIN_CENTRES.map(c => ({ centre: c, quota_count: 0 }))
   )
-  const [existing,        setExisting]        = useState<Schedule | null>(null)
-  const [loading,         setLoading]         = useState(isEdit)
-  const [saving,          setSaving]          = useState(false)
-  const [error,           setError]           = useState('')
+  const [existing,       setExisting]       = useState<Schedule | null>(null)
+  const [loading,        setLoading]        = useState(isEdit)
+  const [saving,         setSaving]         = useState(false)
+  const [error,          setError]          = useState('')
+
+  // For centre admin: their quota from this schedule
+  const [myQuota,        setMyQuota]        = useState(0)
+
+  const isASO = user?.role === 'aso'
 
   // Derived
   const autoName      = buildJathaName(selectedDest, selectedDept, fromDate, toDate)
@@ -108,7 +112,7 @@ export default function JathaScheduleFormPage() {
   const remaining     = totalRequired - totalAssigned
   const activeQuotas  = quotas.filter(q => q.quota_count > 0)
 
-  // ── Load jatha types ────────────────────────────────────────────
+  // ── Load jatha types ──────────────────────────────────────────
   useEffect(() => {
     supabase
       .from('jatha_types')
@@ -119,13 +123,12 @@ export default function JathaScheduleFormPage() {
         if (!data) return
         const types = data as JathaType[]
         setAllTypes(types)
-        // Unique destinations preserving order
         const dests = Array.from(new Set(types.map(t => t.destination)))
         setDestinations(dests)
       })
   }, [])
 
-  // ── When destination changes → filter departments ───────────────
+  // ── When destination changes → filter departments ─────────────
   useEffect(() => {
     if (!selectedDest) {
       setDepartments([])
@@ -141,19 +144,16 @@ export default function JathaScheduleFormPage() {
     setSelectedTypeId(null)
   }, [selectedDest, allTypes])
 
-  // ── When department changes → set type ID ──────────────────────
+  // ── When department changes → set type ID ────────────────────
   useEffect(() => {
-    if (!selectedDest || !selectedDept) {
-      setSelectedTypeId(null)
-      return
-    }
+    if (!selectedDest || !selectedDept) { setSelectedTypeId(null); return }
     const match = allTypes.find(
       t => t.destination === selectedDest && t.department === selectedDept
     )
     setSelectedTypeId(match?.id ?? null)
   }, [selectedDest, selectedDept, allTypes])
 
-  // ── Load existing schedule for edit ────────────────────────────
+  // ── Load existing schedule for edit ──────────────────────────
   useEffect(() => {
     if (!isEdit || !id) return
     const load = async () => {
@@ -169,11 +169,9 @@ export default function JathaScheduleFormPage() {
         setToDate(s.to_date)
         setTotalRequired(s.total_required)
         setDescription(s.description ?? '')
-
-        // Set destination first (triggers department filter)
         setSelectedDest(s.destination)
-        // Department set after allTypes loads — handled below
-        setTimeout(() => setSelectedDept(s.department), 100)
+        // Department set after allTypes loads
+        setTimeout(() => setSelectedDept(s.department), 150)
 
         // Map existing quotas
         const dbMap = new Map(
@@ -188,20 +186,25 @@ export default function JathaScheduleFormPage() {
             return { centre: c, quota_count: db?.count ?? 0, db_id: db?.db_id }
           })
         )
+
+        // If centre admin, find their quota
+        if (user?.role !== 'aso' && user?.centre) {
+          const myQ = dbMap.get(user.centre)
+          setMyQuota(myQ?.count ?? 0)
+        }
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [isEdit, id])
+  }, [isEdit, id, user])
 
-  // ── Update quota for a centre ───────────────────────────────────
   const updateQuota = (centre: string, val: string) => {
     const n = Math.max(0, parseInt(val) || 0)
     setQuotas(prev => prev.map(q => q.centre === centre ? { ...q, quota_count: n } : q))
   }
 
-  // ── Save ────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────
   const handleSave = async (publish: boolean) => {
     if (!user) return
     if (!selectedTypeId)           { setError('Select destination and department'); return }
@@ -253,6 +256,7 @@ export default function JathaScheduleFormPage() {
           }
         }
 
+        setExisting(e => e ? { ...e, is_published: publish } : e)
         navigate('/jatha-schedule')
       } else {
         const { data: newSched, error: schedErr } = await supabase
@@ -330,7 +334,7 @@ export default function JathaScheduleFormPage() {
             </p>
           </div>
         </div>
-        {isEdit && existing && (
+        {isEdit && existing && isASO && (
           <button
             onClick={togglePublish}
             className={[
@@ -358,222 +362,260 @@ export default function JathaScheduleFormPage() {
         </div>
       )}
 
-      {/* Schedule details */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          Schedule Details
-        </p>
+      {/* ── ASO ONLY: Schedule details form ── */}
+      {isASO && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            Schedule Details
+          </p>
 
-        {/* Destination dropdown */}
-        <div>
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-            Destination (गंतव्य) *
-          </label>
-          <select
-            value={selectedDest}
-            onChange={e => setSelectedDest(e.target.value)}
-            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 bg-white"
-          >
-            <option value="">— Select destination —</option>
-            {destinations.map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Department dropdown — only enabled after destination selected */}
-        <div>
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-            Department (विभाग) *
-          </label>
-          <select
-            value={selectedDept}
-            onChange={e => setSelectedDept(e.target.value)}
-            disabled={!selectedDest}
-            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 bg-white disabled:bg-slate-50 disabled:text-slate-400"
-          >
-            <option value="">
-              {selectedDest ? '— Select department —' : '— Select destination first —'}
-            </option>
-            {departments.map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Dates */}
-        <div className="grid grid-cols-2 gap-3">
+          {/* Destination dropdown */}
           <div>
             <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-              From Date *
+              Destination (गंतव्य) *
             </label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={e => setFromDate(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-            />
+            <select
+              value={selectedDest}
+              onChange={e => setSelectedDest(e.target.value)}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 bg-white"
+            >
+              <option value="">— Select destination —</option>
+              {destinations.map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
           </div>
+
+          {/* Department dropdown */}
           <div>
             <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-              To Date *
+              Department (विभाग) *
             </label>
-            <input
-              type="date"
-              value={toDate}
-              min={fromDate}
-              onChange={e => setToDate(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-            />
+            <select
+              value={selectedDept}
+              onChange={e => setSelectedDept(e.target.value)}
+              disabled={!selectedDest}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">
+                {selectedDest ? '— Select department —' : '— Select destination first —'}
+              </option>
+              {departments.map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
           </div>
-        </div>
 
-        {/* Total required */}
-        <div>
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-            Total Sewadars Required (Overall) *
-          </label>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={totalRequired || ''}
-            onChange={e => setTotalRequired(parseInt(e.target.value) || 0)}
-            placeholder="e.g. 500"
-            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-          />
-        </div>
-
-        {/* Notes */}
-        <div>
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-            Notes (optional)
-          </label>
-          <textarea
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            placeholder="Notes for Centre Admins..."
-            rows={2}
-            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 resize-none"
-          />
-        </div>
-      </div>
-
-      {/* Centre quota table */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">
-              Centre-wise Count
-              <span className="text-slate-400 font-normal ml-1">(केंद्र-वार गिनती)</span>
-            </h3>
-            <div className="text-right">
-              <p className="text-xs font-bold text-maroon-600">{totalAssigned} assigned</p>
-              {totalRequired > 0 && (
-                <p className={`text-[10px] font-medium ${
-                  remaining < 0  ? 'text-red-500' :
-                  remaining === 0 ? 'text-green-600' : 'text-slate-400'
-                }`}>
-                  {remaining > 0
-                    ? `${remaining} remaining`
-                    : remaining === 0
-                      ? '✓ Complete'
-                      : `${Math.abs(remaining)} over limit`
-                  }
-                </p>
-              )}
+          {/* Dates */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
+                From Date *
+              </label>
+              <input
+                type="date" value={fromDate}
+                onChange={e => setFromDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
+              />
             </div>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        {totalRequired > 0 && (
-          <div className="px-4 py-2 border-b border-slate-50">
-            <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  totalAssigned > totalRequired ? 'bg-red-500' :
-                  totalAssigned === totalRequired ? 'bg-green-500' : 'bg-maroon-500'
-                }`}
-                style={{
-                  width: `${Math.min(
-                    totalRequired > 0 ? (totalAssigned / totalRequired) * 100 : 0,
-                    100
-                  )}%`,
-                }}
+            <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
+                To Date *
+              </label>
+              <input
+                type="date" value={toDate} min={fromDate}
+                onChange={e => setToDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
               />
             </div>
           </div>
-        )}
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50">
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-8">
-                  #
-                </th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
-                  Centre (केंद्र)
-                </th>
-                <th className="text-center px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-28">
-                  Count (गिनती)
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {quotas.map((q, idx) => (
-                <tr key={q.centre} className={q.quota_count > 0 ? 'bg-maroon-50/30' : ''}>
-                  <td className="px-4 py-2.5 text-[11px] text-slate-400">{idx + 1}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-700">{q.centre}</span>
-                      {q.quota_count > 0 && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-maroon-500 flex-shrink-0" />
-                      )}
-                    </div>
+          {/* Total required */}
+          <div>
+            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
+              Total Sewadars Required (Overall) *
+            </label>
+            <input
+              type="number" inputMode="numeric" min={0}
+              value={totalRequired || ''}
+              onChange={e => setTotalRequired(parseInt(e.target.value) || 0)}
+              placeholder="e.g. 500"
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
+              Notes (optional)
+            </label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Notes for Centre Admins..."
+              rows={2}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 resize-none"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── ASO ONLY: Centre quota table ── */}
+      {isASO && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">
+                Centre-wise Count
+                <span className="text-slate-400 font-normal ml-1">(केंद्र-वार गिनती)</span>
+              </h3>
+              <div className="text-right">
+                <p className="text-xs font-bold text-maroon-600">{totalAssigned} assigned</p>
+                {totalRequired > 0 && (
+                  <p className={`text-[10px] font-medium ${
+                    remaining < 0  ? 'text-red-500' :
+                    remaining === 0 ? 'text-green-600' : 'text-slate-400'
+                  }`}>
+                    {remaining > 0
+                      ? `${remaining} remaining`
+                      : remaining === 0
+                        ? '✓ Complete'
+                        : `${Math.abs(remaining)} over limit`
+                    }
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          {totalRequired > 0 && (
+            <div className="px-4 py-2 border-b border-slate-50">
+              <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    totalAssigned > totalRequired ? 'bg-red-500' :
+                    totalAssigned === totalRequired ? 'bg-green-500' : 'bg-maroon-500'
+                  }`}
+                  style={{
+                    width: `${Math.min(
+                      totalRequired > 0 ? (totalAssigned / totalRequired) * 100 : 0,
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50">
+                  <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-8">#</th>
+                  <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Centre (केंद्र)</th>
+                  <th className="text-center px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-28">Count</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {quotas.map((q, idx) => (
+                  <tr key={q.centre} className={q.quota_count > 0 ? 'bg-maroon-50/30' : ''}>
+                    <td className="px-4 py-2.5 text-[11px] text-slate-400">{idx + 1}</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-700">{q.centre}</span>
+                        {q.quota_count > 0 && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-maroon-500 flex-shrink-0" />
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-center">
+                      <input
+                        type="number" inputMode="numeric" min={0} max={999}
+                        value={q.quota_count || ''}
+                        onChange={e => updateQuota(q.centre, e.target.value)}
+                        placeholder="0"
+                        className={[
+                          'w-20 px-2 py-1.5 text-center text-sm font-semibold border rounded-lg',
+                          'focus:outline-none focus:border-maroon-400 transition-colors',
+                          q.quota_count > 0
+                            ? 'border-maroon-300 bg-maroon-50 text-maroon-700'
+                            : 'border-slate-200 text-slate-400',
+                        ].join(' ')}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-50 border-t border-slate-200">
+                  <td colSpan={2} className="px-4 py-2.5 text-xs font-semibold text-slate-600">
+                    Total · {activeQuotas.length} centres
                   </td>
-                  <td className="px-4 py-2 text-center">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      max={999}
-                      value={q.quota_count || ''}
-                      onChange={e => updateQuota(q.centre, e.target.value)}
-                      placeholder="0"
-                      className={[
-                        'w-20 px-2 py-1.5 text-center text-sm font-semibold border rounded-lg',
-                        'focus:outline-none focus:border-maroon-400 transition-colors',
-                        q.quota_count > 0
-                          ? 'border-maroon-300 bg-maroon-50 text-maroon-700'
-                          : 'border-slate-200 text-slate-400',
-                      ].join(' ')}
-                    />
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`text-sm font-bold ${
+                      totalRequired > 0 && totalAssigned > totalRequired ? 'text-red-600' :
+                      totalRequired > 0 && totalAssigned === totalRequired ? 'text-green-600' :
+                      'text-maroon-600'
+                    }`}>
+                      {totalAssigned}
+                    </span>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-50 border-t border-slate-200">
-                <td colSpan={2} className="px-4 py-2.5 text-xs font-semibold text-slate-600">
-                  Total · {activeQuotas.length} centres assigned
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  <span className={`text-sm font-bold ${
-                    totalRequired > 0 && totalAssigned > totalRequired ? 'text-red-600' :
-                    totalRequired > 0 && totalAssigned === totalRequired ? 'text-green-600' :
-                    'text-maroon-600'
-                  }`}>
-                    {totalAssigned}
-                  </span>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+              </tfoot>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── CENTRE ADMIN: Read-only schedule info ── */}
+      {!isASO && existing && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Schedule Info</p>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Destination</p>
+              <p className="font-medium text-slate-800">{existing.destination} · {existing.department}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Dates</p>
+              <p className="font-medium text-slate-800">
+                {new Date(existing.from_date).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
+                {' – '}
+                {new Date(existing.to_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Your Quota</p>
+              <p className="text-lg font-bold text-maroon-600">{myQuota}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Total Required</p>
+              <p className="font-medium text-slate-700">{existing.total_required}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CENTRE ADMIN: Sub-centre quota distribution ── */}
+      {!isASO && isEdit && id && user?.centre && myQuota > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-slate-700">
+              Sub-Centre Quota Distribution
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Distribute your quota ({myQuota}) to sub-centres under {user.centre}
+            </p>
+          </div>
+          <SubCentreQuotaPanel
+            scheduleId={parseInt(id)}
+            parentCentre={user.centre}
+            parentQuota={myQuota}
+          />
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -583,29 +625,33 @@ export default function JathaScheduleFormPage() {
         </div>
       )}
 
-      {/* Save buttons */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => handleSave(false)}
-          disabled={saving}
-          className="py-3.5 border-2 border-maroon-200 rounded-xl text-sm font-semibold text-maroon-700 active:scale-95 transition-transform touch-manipulation disabled:opacity-50"
-        >
-          Save as Draft
-        </button>
-        <button
-          onClick={() => handleSave(true)}
-          disabled={saving}
-          className="py-3.5 bg-maroon-600 text-white rounded-xl text-sm font-semibold active:scale-95 transition-all touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {saving
-            ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</>
-            : <><Save size={15} /> Save & Publish</>
-          }
-        </button>
-      </div>
-      <p className="text-center text-xs text-slate-400 pb-4">
-        Only published schedules are visible to Centre Admins
-      </p>
+      {/* ── ASO ONLY: Save buttons ── */}
+      {isASO && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => handleSave(false)}
+              disabled={saving}
+              className="py-3.5 border-2 border-maroon-200 rounded-xl text-sm font-semibold text-maroon-700 active:scale-95 transition-transform touch-manipulation disabled:opacity-50"
+            >
+              Save as Draft
+            </button>
+            <button
+              onClick={() => handleSave(true)}
+              disabled={saving}
+              className="py-3.5 bg-maroon-600 text-white rounded-xl text-sm font-semibold active:scale-95 transition-all touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {saving
+                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</>
+                : <><Save size={15} /> Save & Publish</>
+              }
+            </button>
+          </div>
+          <p className="text-center text-xs text-slate-400 pb-4">
+            Only published schedules are visible to Centre Admins
+          </p>
+        </>
+      )}
     </div>
   )
 }
