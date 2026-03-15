@@ -8,29 +8,29 @@ import { Badge } from '@/components/ui/index'
 import type { Sewadar } from '@/types'
 
 const DEPARTMENTS = [
-  'ADMINISTRATION','AREA SECRETARY OFFICE','AUDIO-VISUAL','B.A.V.',
-  'BAAL SATSANG','BAAL SATSANG KARTA','ELECTRIC','HORTICULTURE',
-  'MAINTENANCE','MEDICAL','OFFICE','PANDAL','PATHI','SANITATION',
-  'SATSANG KARTA','SECURITY','STORE','TRAFFIC','WATER','SANGAT',
+  'ADMINISTRATION', 'AREA SECRETARY OFFICE', 'AUDIO-VISUAL', 'B.A.V.',
+  'BAAL SATSANG', 'BAAL SATSANG KARTA', 'ELECTRIC', 'HORTICULTURE',
+  'MAINTENANCE', 'MEDICAL', 'OFFICE', 'PANDAL', 'PATHI', 'SANITATION',
+  'SATSANG KARTA', 'SECURITY', 'STORE', 'TRAFFIC', 'WATER', 'SANGAT',
 ]
 
-const STATUSES = ['Permanent','Open','Elderly','Withdrawn','Expired','Cancelled']
+const STATUSES = ['Permanent', 'Open', 'Elderly', 'Withdrawn', 'Expired', 'Cancelled']
 
 const statusVariant: Record<string, 'green' | 'navy' | 'gold' | 'red' | 'gray'> = {
   Permanent: 'green',
-  Open:      'navy',
-  Elderly:   'gold',
+  Open: 'navy',
+  Elderly: 'gold',
   Withdrawn: 'gray',
-  Expired:   'red',
+  Expired: 'red',
   Cancelled: 'red',
 }
 
 interface Filters {
-  centre:     string
+  centre: string
   department: string
-  status:     string
-  gender:     string
-  search:     string
+  status: string
+  gender: string
+  search: string
 }
 
 const DEFAULT_FILTERS: Filters = {
@@ -39,14 +39,14 @@ const DEFAULT_FILTERS: Filters = {
 
 export default function SewadarListPage() {
   const { user } = useAuth()
-  const [sewadars,     setSewadars]     = useState<Sewadar[]>([])
-  const [centres,      setCentres]      = useState<string[]>([])
-  const [filters,      setFilters]      = useState<Filters>(DEFAULT_FILTERS)
-  const [loading,      setLoading]      = useState(true)
-  const [totalCount,   setTotalCount]   = useState(0)
-  const [page,         setPage]         = useState(0)
-  const [showFilters,  setShowFilters]  = useState(false)
-  const [exporting,    setExporting]    = useState(false)
+  const [sewadars, setSewadars] = useState<Sewadar[]>([])
+  const [centres, setCentres] = useState<string[]>([])
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
+  const [loading, setLoading] = useState(true)
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(0)
+  const [showFilters, setShowFilters] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const PAGE_SIZE = 50
 
   const isASO = user?.role === 'aso'
@@ -62,25 +62,19 @@ export default function SewadarListPage() {
   // Build query based on role + filters
   const buildQuery = useCallback((forCount = false) => {
     let q = supabase.from('sewadars').select(
-      forCount ? '*' : 'id,badge_number,name,father_name,gender,age,mobile,address,centre,department,badge_status,is_scannable,is_special_dept,is_active',
+      forCount ? '*' : '*',
       forCount ? { count: 'exact', head: true } : undefined
     )
 
-    // Role-based centre scope
     if (!isASO && user?.centre) {
-      // Centre Admin: own centre + sub-centres
-      q = q.or(`centre.eq.${user.centre}`)
+      q = q.eq('centre', user.centre)
     }
-
-    // Apply filters
-    if (filters.centre)     q = q.eq('centre', filters.centre)
+    if (filters.centre) q = q.eq('centre', filters.centre)
     if (filters.department) q = q.eq('department', filters.department)
-    if (filters.status)     q = q.eq('badge_status', filters.status)
-    if (filters.gender)     q = q.eq('gender', filters.gender)
+    if (filters.status) q = q.eq('badge_status', filters.status)
+    if (filters.gender) q = q.eq('gender', filters.gender)
     if (filters.search) {
-      q = q.or(
-        `name.ilike.%${filters.search}%,badge_number.ilike.%${filters.search}%`
-      )
+      q = q.or(`name.ilike.%${filters.search}%,badge_number.ilike.%${filters.search}%`)
     }
 
     return q
@@ -128,28 +122,28 @@ export default function SewadarListPage() {
         'badge_number,name,father_name,gender,age,mobile,address,centre,department,badge_status,is_active'
       )
       if (!isASO && user?.centre) q = q.eq('centre', user.centre)
-      if (filters.centre)     q = q.eq('centre', filters.centre)
+      if (filters.centre) q = q.eq('centre', filters.centre)
       if (filters.department) q = q.eq('department', filters.department)
-      if (filters.status)     q = q.eq('badge_status', filters.status)
-      if (filters.gender)     q = q.eq('gender', filters.gender)
-      if (filters.search)     q = q.or(`name.ilike.%${filters.search}%,badge_number.ilike.%${filters.search}%`)
+      if (filters.status) q = q.eq('badge_status', filters.status)
+      if (filters.gender) q = q.eq('gender', filters.gender)
+      if (filters.search) q = q.or(`name.ilike.%${filters.search}%,badge_number.ilike.%${filters.search}%`)
       q = q.order('centre').order('name')
 
       const { data } = await q
       if (!data) return
 
       const rows = data.map(s => ({
-        'Badge Number':  s.badge_number,
-        'Name':          s.name,
-        'Father Name':   s.father_name ?? '',
-        'Gender':        s.gender === 'M' ? 'Male' : 'Female',
-        'Age':           s.age ?? '',
-        'Mobile':        s.mobile ?? '',
-        'Address':       s.address ?? '',
-        'Centre':        s.centre,
-        'Department':    s.department ?? '',
-        'Badge Status':  s.badge_status,
-        'Active':        s.is_active ? 'Yes' : 'No',
+        'Badge Number': s.badge_number,
+        'Name': s.name,
+        'Father Name': s.father_name ?? '',
+        'Gender': s.gender === 'M' ? 'Male' : 'Female',
+        'Age': s.age ?? '',
+        'Mobile': s.mobile ?? '',
+        'Address': s.address ?? '',
+        'Centre': s.centre,
+        'Department': s.department ?? '',
+        'Badge Status': s.badge_status,
+        'Active': s.is_active ? 'Yes' : 'No',
       }))
 
       const ws = XLSX.utils.json_to_sheet(rows)
@@ -159,7 +153,7 @@ export default function SewadarListPage() {
       // Column widths
       ws['!cols'] = [
         { wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 8 },
-        { wch: 5 },  { wch: 14 }, { wch: 36 }, { wch: 20 },
+        { wch: 5 }, { wch: 14 }, { wch: 36 }, { wch: 20 },
         { wch: 20 }, { wch: 12 }, { wch: 7 },
       ]
 
