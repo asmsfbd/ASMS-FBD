@@ -6,33 +6,33 @@ import { Badge } from '@/components/ui/index'
 import { useAuth } from '@/hooks/useAuth'
 
 interface JathaCard {
-  schedule_id:   number
-  jatha_name:    string
-  destination:   string
-  department:    string
-  from_date:     string
-  to_date:       string
-  quota:         number
-  nr_id:         number | null
-  nr_status:     string | null
-  member_count:  number
-  male_count:    number
-  female_count:  number
+  schedule_id: number
+  jatha_name: string
+  destination: string
+  department: string
+  from_date: string
+  to_date: string
+  quota: number
+  nr_id: number | null
+  nr_status: string | null
+  member_count: number
+  male_count: number
+  female_count: number
 }
 
 const nrStatusConfig: Record<string, { label: string; labelHi: string; color: string; bar: string }> = {
-  draft:     { label: 'Draft',     labelHi: 'मसौदा',    color: 'bg-slate-100 text-slate-600 border-slate-200',    bar: 'bg-slate-400' },
-  submitted: { label: 'Submitted', labelHi: 'जमा',      color: 'bg-navy-100 text-navy-700 border-navy-200',       bar: 'bg-navy-500' },
-  approved:  { label: 'Approved',  labelHi: 'स्वीकृत',  color: 'bg-green-100 text-green-700 border-green-200',    bar: 'bg-green-500' },
-  issued:    { label: 'Issued',    labelHi: 'जारी',      color: 'bg-maroon-100 text-maroon-700 border-maroon-200', bar: 'bg-maroon-500' },
-  rejected:  { label: 'Rejected',  labelHi: 'अस्वीकृत', color: 'bg-red-100 text-red-700 border-red-200',         bar: 'bg-red-500' },
+  draft: { label: 'Draft', labelHi: 'मसौदा', color: 'bg-slate-100 text-slate-600 border-slate-200', bar: 'bg-slate-400' },
+  submitted: { label: 'Submitted', labelHi: 'जमा', color: 'bg-navy-100 text-navy-700 border-navy-200', bar: 'bg-navy-500' },
+  approved: { label: 'Approved', labelHi: 'स्वीकृत', color: 'bg-green-100 text-green-700 border-green-200', bar: 'bg-green-500' },
+  issued: { label: 'Issued', labelHi: 'जारी', color: 'bg-maroon-100 text-maroon-700 border-maroon-200', bar: 'bg-maroon-500' },
+  rejected: { label: 'Rejected', labelHi: 'अस्वीकृत', color: 'bg-red-100 text-red-700 border-red-200', bar: 'bg-red-500' },
 }
 
 export default function CentreAdminDashboard() {
-  const { user }                           = useAuth()
-  const [cards,         setCards]          = useState<JathaCard[]>([])
-  const [sewadarsCount, setSewadarsCount]  = useState(0)
-  const [loading,       setLoading]        = useState(true)
+  const { user } = useAuth()
+  const [cards, setCards] = useState<JathaCard[]>([])
+  const [sewadarsCount, setSewadarsCount] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => { if (user) fetchData() }, [user])
 
@@ -46,14 +46,14 @@ export default function CentreAdminDashboard() {
           .eq('centre', user.centre).eq('is_active', true),
 
         // Fetch quotas for this centre from published active schedules
-        supabase.from('sewa_quota')
+        (supabase.from('sewa_quota') as any)
           .select(`
-            quota_count,
-            sewa_schedule!sewa_quota_sewa_schedule_id_fkey (
-              id, jatha_name, destination, department,
-              from_date, to_date, is_published, is_active
-            )
-          `)
+    quota_count,
+    sewa_schedule!sewa_quota_sewa_schedule_id_fkey (
+      id, jatha_name, destination, department,
+      from_date, to_date, is_published, is_active
+    )
+  `)
           .eq('centre', user.centre)
           .gt('quota_count', 0),
       ])
@@ -81,29 +81,28 @@ export default function CentreAdminDashboard() {
         .in('jatha_schedule_id', scheduleIds)
 
       // Simplified NR fetch
-      const { data: nrSimple } = await supabase
-        .from('v_nr_summary')
+      const { data: nrSimple } = await (supabase.from('v_nr_summary') as any)
         .select('id, status, jatha_schedule_id, member_count, male_count, female_count')
         .eq('centre', user.centre)
-        .in('jatha_schedule_id' as any, scheduleIds)
+        .in('jatha_schedule_id', scheduleIds)
 
       const nrMap = new Map((nrSimple ?? []).map((nr: any) => [nr.jatha_schedule_id, nr]))
 
       const jathaCards: JathaCard[] = validQuotas.map((q: any) => {
-        const s  = q.sewa_schedule
+        const s = q.sewa_schedule
         const nr = nrMap.get(s.id)
         return {
-          schedule_id:  s.id,
-          jatha_name:   s.jatha_name,
-          destination:  s.destination,
-          department:   s.department,
-          from_date:    s.from_date,
-          to_date:      s.to_date,
-          quota:        q.quota_count,
-          nr_id:        nr?.id ?? null,
-          nr_status:    nr?.status ?? null,
+          schedule_id: s.id,
+          jatha_name: s.jatha_name,
+          destination: s.destination,
+          department: s.department,
+          from_date: s.from_date,
+          to_date: s.to_date,
+          quota: q.quota_count,
+          nr_id: nr?.id ?? null,
+          nr_status: nr?.status ?? null,
           member_count: nr?.member_count ?? 0,
-          male_count:   nr?.male_count ?? 0,
+          male_count: nr?.male_count ?? 0,
           female_count: nr?.female_count ?? 0,
         }
       }).sort((a: JathaCard, b: JathaCard) =>
@@ -116,7 +115,7 @@ export default function CentreAdminDashboard() {
   }
 
   const activeCards = cards.filter(c => new Date(c.to_date) >= new Date())
-  const pastCards   = cards.filter(c => new Date(c.to_date) < new Date())
+  const pastCards = cards.filter(c => new Date(c.to_date) < new Date())
 
   return (
     <div className="space-y-5 max-w-lg mx-auto">
@@ -192,8 +191,8 @@ export default function CentreAdminDashboard() {
 }
 
 function JathaCardView({ card }: { card: JathaCard }) {
-  const cfg   = card.nr_status ? nrStatusConfig[card.nr_status] : null
-  const pct   = card.quota > 0 ? Math.min(Math.round((card.member_count / card.quota) * 100), 100) : null
+  const cfg = card.nr_status ? nrStatusConfig[card.nr_status] : null
+  const pct = card.quota > 0 ? Math.min(Math.round((card.member_count / card.quota) * 100), 100) : null
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -204,9 +203,9 @@ function JathaCardView({ card }: { card: JathaCard }) {
             <h3 className="text-sm font-semibold text-slate-800 mb-0.5 leading-tight">{card.jatha_name}</h3>
             <p className="text-xs text-slate-500">{card.destination} · {card.department}</p>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              {new Date(card.from_date).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
+              {new Date(card.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
               {' – '}
-              {new Date(card.to_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+              {new Date(card.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
           <div className="text-right flex-shrink-0">
