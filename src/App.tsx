@@ -14,6 +14,9 @@ import SangatFormPage from '@/pages/sangat/SangatFormPage'
 import SangatProfilePage from '@/pages/sangat/SangatProfilePage'
 import JathaScheduleListPage from '@/pages/jatha/JathaScheduleListPage'
 import JathaScheduleFormPage from '@/pages/jatha/JathaScheduleFormPage'
+import NRListPage from '@/pages/nr/NRListPage'
+import NRFormPage from '@/pages/nr/NRFormPage'
+import NRDetailPage from '@/pages/nr/NRDetailPage'
 import type { Role } from '@/types'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -46,7 +49,7 @@ function Placeholder({ text }: { text: string }) {
     <div className="flex items-center justify-center py-16 max-w-lg mx-auto text-center">
       <div>
         <p className="text-slate-400 text-sm">{text}</p>
-        <p className="text-slate-300 text-xs mt-1">Coming in next phase</p>
+        <p className="text-slate-300 text-xs mt-1">Coming soon</p>
       </div>
     </div>
   )
@@ -68,20 +71,16 @@ function AuthenticatedApp() {
         <Route path="/sangat/:id"        element={<RequireRole roles={['centre_admin','aso']}><SangatProfilePage /></RequireRole>} />
         <Route path="/sangat/:id/edit"   element={<RequireRole roles={['centre_admin','aso']}><SangatFormPage /></RequireRole>} />
 
-        {/* Phase 4 — Jatha Schedule */}
-        {/* List: ASO sees all, Centre Admin sees assigned */}
-        <Route path="/jatha-schedule"
-          element={<RequireRole roles={['centre_admin','aso']}><JathaScheduleListPage /></RequireRole>} />
-        {/* Create: ASO only */}
-        <Route path="/jatha-schedule/new"
-          element={<RequireRole roles={['aso']}><JathaScheduleFormPage /></RequireRole>} />
-        {/* Edit: ASO only — same form component, detects id param */}
-        <Route path="/jatha-schedule/:id"
-          element={<RequireRole roles={['aso']}><JathaScheduleFormPage /></RequireRole>} />
+        {/* Phase 4 */}
+        <Route path="/jatha-schedule"    element={<RequireRole roles={['centre_admin','aso']}><JathaScheduleListPage /></RequireRole>} />
+        <Route path="/jatha-schedule/new" element={<RequireRole roles={['aso']}><JathaScheduleFormPage /></RequireRole>} />
+        <Route path="/jatha-schedule/:id" element={<RequireRole roles={['aso']}><JathaScheduleFormPage /></RequireRole>} />
 
-        {/* Phase 5 */}
-        <Route path="/nominal-roles"     element={<RequireRole roles={['centre_admin','aso']}><Placeholder text="Nominal roles — Phase 5" /></RequireRole>} />
-        <Route path="/nominal-roles/:id" element={<RequireRole roles={['centre_admin','aso']}><Placeholder text="NR detail — Phase 5" /></RequireRole>} />
+        {/* Phase 5 — Nominal Roles */}
+        <Route path="/nominal-roles"           element={<RequireRole roles={['centre_admin','aso']}><NRListPage /></RequireRole>} />
+        <Route path="/nominal-roles/new"       element={<RequireRole roles={['centre_admin','aso']}><NRFormPage /></RequireRole>} />
+        <Route path="/nominal-roles/:id"       element={<RequireRole roles={['centre_admin','aso']}><NRDetailPage /></RequireRole>} />
+        <Route path="/nominal-roles/:id/edit"  element={<RequireRole roles={['centre_admin','aso']}><NRFormPage /></RequireRole>} />
 
         {/* Phase 8 */}
         <Route path="/reports"           element={<RequireRole roles={['centre_admin','aso']}><Placeholder text="Reports — Phase 8" /></RequireRole>} />
