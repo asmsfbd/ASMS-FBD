@@ -16,8 +16,10 @@ interface Schedule {
   is_published:   boolean
   is_active:      boolean
   created_at:     string
-  centre_count:   number
-  total_assigned: number
+  centre_count:   number   // ASO: all centres with quota > 0
+  total_assigned: number   // ASO: sum of all centre quotas
+  my_quota:       number   // Centre Admin: their centre quota only
+  my_nr_members:  number   // Centre Admin: their NR member count (Phase 5)
 }
 
 type FilterStatus = 'all' | 'published' | 'draft' | 'inactive'
@@ -30,27 +32,64 @@ export default function JathaScheduleListPage() {
   const [destFilter, setDestFilter]     = useState('all')
   const isASO = user?.role === 'aso'
 
-  useEffect(() => { fetchSchedules() }, [])
+  useEffect(() => { if (user) fetchSchedules() }, [user])
 
   const fetchSchedules = async () => {
+    if (!user) return
     setLoading(true)
     try {
-      const { data } = await supabase
-        .from('sewa_schedule')
-        .select(`
-          id, jatha_name, destination, department,
-          from_date, to_date, total_required,
-          is_published, is_active, created_at,
-          sewa_quota (quota_count)
-        `)
-        .order('from_date', { ascending: false })
+      if (isASO) {
+        // ASO: all schedules, aggregate all quotas
+        const { data } = await supabase
+          .from('sewa_schedule')
+          .select('id, jatha_name, destination, department, from_date, to_date, total_required, is_published, is_active, created_at, sewa_quota (quota_count)')
+          .order('from_date', { ascending: false })
 
-      if (data) {
-        setSchedules(data.map((s: any) => ({
-          ...s,
-          centre_count:   (s.sewa_quota ?? []).filter((q: any) => q.quota_count > 0).length,
-          total_assigned: (s.sewa_quota ?? []).reduce((sum: number, q: any) => sum + (q.quota_count ?? 0), 0),
-        })))
+        if (data) {
+          setSchedules(data.map((s: any) => ({
+            ...s,
+            centre_count:  (s.sewa_quota ?? []).filter((q: any) => q.quota_count > 0).length,
+            total_assigned:(s.sewa_quota ?? []).reduce((sum: number, q: any) => sum + (q.quota_count ?? 0), 0),
+            my_quota:      0,
+            my_nr_members: 0,
+          })))
+        }
+      } else {
+        // Centre Admin: only schedules assigned to their centre
+        // Fetch their quota rows with schedule details
+        const { data: quotaData } = await (supabase
+          .from('sewa_quota') as any)
+          .select('quota_count, sewa_schedule_id')
+          .eq('centre', user.centre)
+          .gt('quota_count', 0)
+
+        if (!quotaData || quotaData.length === 0) {
+          setSchedules([])
+          setLoading(false)
+          return
+        }
+
+        const scheduleIds = quotaData.map((q: any) => q.sewa_schedule_id)
+        const quotaMap    = new Map(quotaData.map((q: any) => [q.sewa_schedule_id, q.quota_count]))
+
+        // Fetch schedule details separately (avoids nested join TS issues)
+        const { data: schedData } = await supabase
+          .from('sewa_schedule')
+          .select('id, jatha_name, destination, department, from_date, to_date, total_required, is_published, is_active, created_at')
+          .in('id', scheduleIds)
+          .eq('is_published', true)
+          .eq('is_active', true)
+          .order('from_date', { ascending: true })
+
+        if (schedData) {
+          setSchedules(schedData.map((s: any) => ({
+            ...s,
+            centre_count:  1,
+            total_assigned:quotaMap.get(s.id) ?? 0,
+            my_quota:      quotaMap.get(s.id) ?? 0,
+            my_nr_members: 0, // Will be filled from NR in Phase 5
+          })))
+        }
       }
     } catch (err) {
       console.error(err)
@@ -95,7 +134,10 @@ export default function JathaScheduleListPage() {
             Jatha Schedule
             <span className="text-slate-400 font-normal text-sm ml-1">(जत्था शेड्यूल)</span>
           </h1>
-          <p className="text-xs text-slate-400">{schedules.length} total schedules</p>
+          <p className="text-xs text-slate-400">
+            {schedules.length} schedule{schedules.length !== 1 ? 's' : ''}
+            {!isASO && ` assigned to ${user?.centre}`}
+          </p>
         </div>
         {isASO && (
           <Link to="/jatha-schedule/new">
@@ -109,25 +151,17 @@ export default function JathaScheduleListPage() {
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
         <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-          {(['all', 'published', 'draft', 'inactive'] as FilterStatus[]).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={[
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all touch-manipulation capitalize',
-                filter === f ? 'bg-white text-maroon-700 shadow-sm' : 'text-slate-500',
-              ].join(' ')}
-            >
+          {(['all','published','draft','inactive'] as FilterStatus[]).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={['px-3 py-1.5 rounded-lg text-xs font-medium transition-all touch-manipulation capitalize',
+                filter === f ? 'bg-white text-maroon-700 shadow-sm' : 'text-slate-500'].join(' ')}>
               {f}
             </button>
           ))}
         </div>
         {destinations.length > 2 && (
-          <select
-            value={destFilter}
-            onChange={e => setDestFilter(e.target.value)}
-            className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none"
-          >
+          <select value={destFilter} onChange={e => setDestFilter(e.target.value)}
+            className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none">
             {destinations.map(d => (
               <option key={d} value={d}>{d === 'all' ? 'All Destinations' : d}</option>
             ))}
@@ -135,7 +169,7 @@ export default function JathaScheduleListPage() {
         )}
       </div>
 
-      {/* Schedule cards */}
+      {/* Cards */}
       <div className="space-y-3">
         {loading && [...Array(3)].map((_, i) => (
           <div key={i} className="h-32 bg-slate-100 rounded-xl animate-pulse" />
@@ -144,7 +178,9 @@ export default function JathaScheduleListPage() {
         {!loading && filtered.length === 0 && (
           <div className="bg-white rounded-xl border border-slate-200 py-14 text-center">
             <Calendar size={28} className="text-slate-300 mx-auto mb-3" />
-            <p className="text-sm text-slate-400">No schedules found</p>
+            <p className="text-sm text-slate-400">
+              {isASO ? 'No schedules found' : 'No jathas assigned to your centre yet'}
+            </p>
             {isASO && (
               <Link to="/jatha-schedule/new">
                 <button className="mt-3 px-4 py-2 bg-maroon-600 text-white rounded-xl text-xs font-semibold touch-manipulation">
@@ -157,8 +193,14 @@ export default function JathaScheduleListPage() {
 
         {!loading && filtered.map(s => {
           const info = statusInfo(s)
-          const pct  = s.total_required > 0
-            ? Math.min(Math.round((s.total_assigned / s.total_required) * 100), 100)
+
+          // Role-specific display values
+          const quotaLabel    = isASO ? 'Required'   : 'Your Quota'
+          const assignedLabel = isASO ? 'Assigned'   : 'In NR'
+          const quotaVal      = isASO ? s.total_required : s.my_quota
+          const assignedVal   = isASO ? s.total_assigned : s.my_nr_members
+          const pct           = quotaVal > 0
+            ? Math.min(Math.round((assignedVal / quotaVal) * 100), 100)
             : null
 
           return (
@@ -166,7 +208,7 @@ export default function JathaScheduleListPage() {
               <div className="h-1 bg-maroon-500" />
               <div className="p-4">
 
-                {/* Title row */}
+                {/* Title */}
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -177,12 +219,11 @@ export default function JathaScheduleListPage() {
                     </div>
                     <p className="text-xs text-slate-500">{s.destination} · {s.department}</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      {new Date(s.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {new Date(s.from_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
                       {' – '}
-                      {new Date(s.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {new Date(s.to_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
                     </p>
                   </div>
-                  {/* Edit button — routes to form page */}
                   {isASO && (
                     <Link to={`/jatha-schedule/${s.id}`}>
                       <button className="p-2 rounded-xl bg-slate-100 text-slate-500 hover:bg-maroon-50 hover:text-maroon-600 transition-colors touch-manipulation">
@@ -194,23 +235,23 @@ export default function JathaScheduleListPage() {
 
                 {/* Stats */}
                 <div className="flex gap-5 mb-3">
+                  {isASO && (
+                    <div className="text-center">
+                      <p className="text-base font-bold text-slate-600">{s.centre_count}</p>
+                      <p className="text-[10px] text-slate-400">Centres</p>
+                    </div>
+                  )}
                   <div className="text-center">
-                    <p className="text-base font-bold text-maroon-600">{s.centre_count}</p>
-                    <p className="text-[10px] text-slate-400">Centres</p>
+                    <p className="text-base font-bold text-maroon-600">{quotaVal}</p>
+                    <p className="text-[10px] text-slate-400">{quotaLabel}</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-base font-bold text-navy-600">{s.total_assigned}</p>
-                    <p className="text-[10px] text-slate-400">Assigned</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-base font-bold text-slate-700">{s.total_required}</p>
-                    <p className="text-[10px] text-slate-400">Required</p>
+                    <p className="text-base font-bold text-navy-600">{assignedVal}</p>
+                    <p className="text-[10px] text-slate-400">{assignedLabel}</p>
                   </div>
                   {pct !== null && (
                     <div className="text-center">
-                      <p className={`text-base font-bold ${
-                        pct >= 100 ? 'text-green-600' : pct >= 70 ? 'text-amber-600' : 'text-red-500'
-                      }`}>
+                      <p className={`text-base font-bold ${pct >= 100 ? 'text-green-600' : pct >= 70 ? 'text-amber-600' : 'text-red-500'}`}>
                         {pct}%
                       </p>
                       <p className="text-[10px] text-slate-400">Filled</p>
@@ -218,19 +259,26 @@ export default function JathaScheduleListPage() {
                   )}
                 </div>
 
-                {/* Progress bar */}
+                {/* Progress */}
                 {pct !== null && (
                   <div className="bg-slate-100 rounded-full h-1.5 overflow-hidden mb-3">
-                    <div
-                      className={`h-full rounded-full ${
-                        pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-amber-500' : 'bg-maroon-500'
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
+                    <div className={`h-full rounded-full ${pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-amber-500' : 'bg-maroon-500'}`}
+                      style={{ width: `${pct}%` }} />
                   </div>
                 )}
 
-                {/* Actions */}
+                {/* Centre Admin: NR button */}
+                {!isASO && (
+                  <div className="pt-3 border-t border-slate-100">
+                    <Link to={`/nominal-roles/new?schedule=${s.id}`}>
+                      <button className="w-full py-2.5 bg-maroon-600 text-white rounded-lg text-xs font-semibold active:scale-95 touch-manipulation">
+                        Create Nominal Role →
+                      </button>
+                    </Link>
+                  </div>
+                )}
+
+                {/* ASO: manage/publish/cancel */}
                 {isASO && (
                   <div className="flex gap-2 pt-3 border-t border-slate-100">
                     <Link to={`/jatha-schedule/${s.id}`} className="flex-1">
@@ -238,30 +286,18 @@ export default function JathaScheduleListPage() {
                         Edit / Manage
                       </button>
                     </Link>
-                    <button
-                      onClick={() => togglePublish(s)}
-                      disabled={!s.is_active}
-                      className={[
-                        'flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 touch-manipulation disabled:opacity-40',
+                    <button onClick={() => togglePublish(s)} disabled={!s.is_active}
+                      className={['flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 touch-manipulation disabled:opacity-40',
                         s.is_published
                           ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                          : 'bg-green-50 text-green-700 border border-green-200',
-                      ].join(' ')}
-                    >
-                      {s.is_published
-                        ? <><EyeOff size={11} /> Unpublish</>
-                        : <><Eye size={11} /> Publish</>
-                      }
+                          : 'bg-green-50 text-green-700 border border-green-200'].join(' ')}>
+                      {s.is_published ? <><EyeOff size={11} />Unpublish</> : <><Eye size={11} />Publish</>}
                     </button>
-                    <button
-                      onClick={() => toggleActive(s)}
-                      className={[
-                        'px-3 py-2 rounded-lg text-xs font-medium touch-manipulation',
+                    <button onClick={() => toggleActive(s)}
+                      className={['px-3 py-2 rounded-lg text-xs font-medium touch-manipulation',
                         s.is_active
                           ? 'bg-red-50 text-red-600 border border-red-200'
-                          : 'bg-green-50 text-green-700 border border-green-200',
-                      ].join(' ')}
-                    >
+                          : 'bg-green-50 text-green-700 border border-green-200'].join(' ')}>
                       {s.is_active ? 'Cancel' : 'Restore'}
                     </button>
                   </div>
