@@ -6,34 +6,34 @@ import { Badge } from '@/components/ui/index'
 import { useAuth } from '@/hooks/useAuth'
 
 interface JathaCard {
-  schedule_id:   number
-  jatha_name:    string
-  destination:   string
-  department:    string
-  is_bhati:      boolean
-  from_date:     string
-  to_date:       string
-  quota:         number
-  nr_id:         number | null
-  nr_status:     string | null
-  member_count:  number
-  male_count:    number
-  female_count:  number
+  schedule_id: number
+  jatha_name: string
+  destination: string
+  department: string
+  is_bhati: boolean
+  from_date: string
+  to_date: string
+  quota: number
+  nr_id: number | null
+  nr_status: string | null
+  member_count: number
+  male_count: number
+  female_count: number
 }
 
 const nrStatusConfig = {
-  draft:     { label: 'Draft',     labelHi: 'मसौदा',    color: 'bg-slate-100 text-slate-600 border-slate-200',    bar: 'bg-slate-400' },
-  submitted: { label: 'Submitted', labelHi: 'जमा',      color: 'bg-navy-100 text-navy-700 border-navy-200',       bar: 'bg-navy-500' },
-  approved:  { label: 'Approved',  labelHi: 'स्वीकृत',  color: 'bg-green-100 text-green-700 border-green-200',    bar: 'bg-green-500' },
-  issued:    { label: 'Issued',    labelHi: 'जारी',      color: 'bg-maroon-100 text-maroon-700 border-maroon-200', bar: 'bg-maroon-500' },
-  rejected:  { label: 'Rejected',  labelHi: 'अस्वीकृत', color: 'bg-red-100 text-red-700 border-red-200',         bar: 'bg-red-500' },
+  draft: { label: 'Draft', labelHi: 'मसौदा', color: 'bg-slate-100 text-slate-600 border-slate-200', bar: 'bg-slate-400' },
+  submitted: { label: 'Submitted', labelHi: 'जमा', color: 'bg-navy-100 text-navy-700 border-navy-200', bar: 'bg-navy-500' },
+  approved: { label: 'Approved', labelHi: 'स्वीकृत', color: 'bg-green-100 text-green-700 border-green-200', bar: 'bg-green-500' },
+  issued: { label: 'Issued', labelHi: 'जारी', color: 'bg-maroon-100 text-maroon-700 border-maroon-200', bar: 'bg-maroon-500' },
+  rejected: { label: 'Rejected', labelHi: 'अस्वीकृत', color: 'bg-red-100 text-red-700 border-red-200', bar: 'bg-red-500' },
 }
 
 export default function CentreAdminDashboard() {
-  const { user }                           = useAuth()
-  const [cards,         setCards]          = useState<JathaCard[]>([])
-  const [sewadarsCount, setSewadarsCount]  = useState(0)
-  const [loading,       setLoading]        = useState(true)
+  const { user } = useAuth()
+  const [cards, setCards] = useState<JathaCard[]>([])
+  const [sewadarsCount, setSewadarsCount] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => { if (user) fetchData() }, [user])
 
@@ -73,26 +73,27 @@ export default function CentreAdminDashboard() {
         .from('v_nr_summary')
         .select('*')
         .eq('centre', user.centre)
-        .in('jatha_schedule_id' as any, scheduleIds)
+        .in('jatha_schedule_id', scheduleIds)
+        .returns<any[]>();
 
       const nrMap = new Map((nrData ?? []).map((nr: any) => [nr.jatha_schedule_id ?? 0, nr]))
 
       const jathaCards: JathaCard[] = schedules.map((q: any) => {
-        const s  = q.jatha_schedule
+        const s = q.jatha_schedule
         const nr = nrMap.get(s.id)
         return {
-          schedule_id:  s.id,
-          jatha_name:   s.jatha_name,
-          destination:  s.destination,
-          department:   s.department,
-          is_bhati:     s.is_bhati,
-          from_date:    s.from_date,
-          to_date:      s.to_date,
-          quota:        q.quota_count,
-          nr_id:        nr?.id ?? null,
-          nr_status:    nr?.status ?? null,
+          schedule_id: s.id,
+          jatha_name: s.jatha_name,
+          destination: s.destination,
+          department: s.department,
+          is_bhati: s.is_bhati,
+          from_date: s.from_date,
+          to_date: s.to_date,
+          quota: q.quota_count,
+          nr_id: nr?.id ?? null,
+          nr_status: nr?.status ?? null,
           member_count: nr?.member_count ?? 0,
-          male_count:   nr?.male_count ?? 0,
+          male_count: nr?.male_count ?? 0,
           female_count: nr?.female_count ?? 0,
         }
       })
@@ -107,10 +108,10 @@ export default function CentreAdminDashboard() {
     }
   }
 
-  const activeCards  = cards.filter(c => new Date(c.to_date) >= new Date())
-  const pastCards    = cards.filter(c => new Date(c.to_date) < new Date())
-  const pendingNRs   = cards.filter(c => !c.nr_id).length
-  const draftNRs     = cards.filter(c => c.nr_status === 'draft').length
+  const activeCards = cards.filter(c => new Date(c.to_date) >= new Date())
+  const pastCards = cards.filter(c => new Date(c.to_date) < new Date())
+  const pendingNRs = cards.filter(c => !c.nr_id).length
+  const draftNRs = cards.filter(c => c.nr_status === 'draft').length
 
   return (
     <div className="space-y-5 max-w-lg mx-auto">
@@ -203,10 +204,10 @@ export default function CentreAdminDashboard() {
 }
 
 function JathaCardView({ card }: { card: JathaCard }) {
-  const cfg       = card.nr_status ? nrStatusConfig[card.nr_status as keyof typeof nrStatusConfig] : null
-  const pct       = card.quota > 0 ? Math.min(Math.round((card.member_count / card.quota) * 100), 100) : null
-  const hasNR     = !!card.nr_id
-  const isPast    = new Date(card.to_date) < new Date()
+  const cfg = card.nr_status ? nrStatusConfig[card.nr_status as keyof typeof nrStatusConfig] : null
+  const pct = card.quota > 0 ? Math.min(Math.round((card.member_count / card.quota) * 100), 100) : null
+  const hasNR = !!card.nr_id
+  const isPast = new Date(card.to_date) < new Date()
 
   return (
     <div className={`bg-white rounded-xl border overflow-hidden ${isPast ? 'border-slate-100' : 'border-slate-200'}`}>
