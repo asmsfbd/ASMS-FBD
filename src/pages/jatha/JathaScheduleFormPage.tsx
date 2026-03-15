@@ -1,165 +1,221 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { ChevronLeft, Plus, Trash2, Save, AlertTriangle } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ChevronLeft, Save, Eye, EyeOff, AlertTriangle, Edit2, XCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { Badge } from '@/components/ui/index'
 
-const DESTINATIONS = [
-  'Beas', 'Delhi', 'Sikanderpur', 'Amritsar', 'Patiala',
-  'Ludhiana', 'Chandigarh', 'Haridwar', 'Dehradun',
+// 18 main centres in exact sequence
+const MAIN_CENTRES = [
+  'ANKHEER', 'BALLABGARH', 'DLF CITY GURGAON', 'FIROZPUR JHIRKA',
+  'TAORU', 'GURGAON', 'MOHANA', 'ZAIBABAD KHERLI',
+  'NANGLA GUJRAN', 'NIT - 2', 'PALWAL', 'BAROLI',
+  'HODAL', 'RAJENDRA PARK', 'SECTOR-15-A', 'PRITHLA',
+  'SURAJ KUND', 'TIGAON',
 ]
 
-const DEPARTMENTS = [
-  'Langar', 'Security', 'Sewadar', 'Medical',
-  'Car Sewa', 'Administration', 'Pandal', 'Sanitation',
-  'Horticulture', 'Store', 'Water', 'Electric',
-]
-
-interface CentreQuota {
-  centre:       string
-  quota_count:  number
+interface JathaType {
+  id:          number
+  destination: string
+  department:  string
 }
 
-interface FormData {
-  jatha_name:   string
-  destination:  string
-  department:   string
-  is_bhati:     boolean
-  from_date:    string
-  to_date:      string
-  description:  string
+interface QuotaRow {
+  centre:      string
+  quota_count: number
+  db_id?:      number
 }
 
-const EMPTY_FORM: FormData = {
-  jatha_name:  '',
-  destination: '',
-  department:  '',
-  is_bhati:    false,
-  from_date:   '',
-  to_date:     '',
-  description: '',
+interface Schedule {
+  id:             number
+  jatha_type_id:  number
+  destination:    string
+  department:     string
+  jatha_name:     string
+  from_date:      string
+  to_date:        string
+  total_required: number
+  is_published:   boolean
+  is_active:      boolean
+  description:    string | null
+}
+
+// ── Auto name generator ────────────────────────────────────────
+function buildJathaName(destination: string, department: string, fromDate: string, toDate: string): string {
+  if (!destination || !department || !fromDate || !toDate) return ''
+
+  const from = new Date(fromDate)
+  const to   = new Date(toDate)
+
+  const fromDay   = from.getDate().toString().padStart(2, '0')
+  const toDay     = to.getDate().toString().padStart(2, '0')
+  const fromMonth = from.toLocaleDateString('en-IN', { month: 'long' })
+  const toMonth   = to.toLocaleDateString('en-IN', { month: 'long' })
+  const toYear    = to.getFullYear()
+
+  let dateStr: string
+  if (fromMonth === toMonth) {
+    dateStr = `${fromDay} to ${toDay} ${fromMonth} ${toYear}`
+  } else {
+    dateStr = `${fromDay} ${fromMonth} to ${toDay} ${toMonth} ${toYear}`
+  }
+
+  return `${destination.toUpperCase()} ${department.toUpperCase()} JATHA - ${dateStr}`
 }
 
 export default function JathaScheduleFormPage() {
-  const { user }     = useAuth()
-  const navigate     = useNavigate()
-  const [form,        setForm]        = useState<FormData>(EMPTY_FORM)
-  const [allCentres,  setAllCentres]  = useState<string[]>([])
-  const [selected,    setSelected]    = useState<CentreQuota[]>([])
-  const [centreSearch, setCentreSearch] = useState('')
-  const [saving,      setSaving]      = useState(false)
-  const [error,       setError]       = useState('')
-  const [step,        setStep]        = useState<1 | 2>(1)
+  const { id }   = useParams<{ id: string }>()
+  const isEdit   = !!id && id !== 'new'
+  const { user } = useAuth()
+  const navigate = useNavigate()
 
+  const [jathaTypes,     setJathaTypes]     = useState<JathaType[]>([])
+  const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null)
+  const [fromDate,       setFromDate]       = useState('')
+  const [toDate,         setToDate]         = useState('')
+  const [totalRequired,  setTotalRequired]  = useState(0)
+  const [description,    setDescription]    = useState('')
+  const [quotas,         setQuotas]         = useState<QuotaRow[]>(
+    MAIN_CENTRES.map(c => ({ centre: c, quota_count: 0 }))
+  )
+  const [existing,       setExisting]       = useState<Schedule | null>(null)
+  const [loading,        setLoading]        = useState(isEdit)
+  const [saving,         setSaving]         = useState(false)
+  const [error,          setError]          = useState('')
+
+  // Derived
+  const selectedType    = jathaTypes.find(t => t.id === selectedTypeId)
+  const autoName        = buildJathaName(
+    selectedType?.destination ?? '',
+    selectedType?.department ?? '',
+    fromDate, toDate
+  )
+  const totalAssigned   = quotas.reduce((s, q) => s + q.quota_count, 0)
+  const remaining       = totalRequired - totalAssigned
+  const activeQuotas    = quotas.filter(q => q.quota_count > 0)
+
+  // Load jatha types
   useEffect(() => {
-    supabase.from('centres')
-      .select('centre_name')
+    supabase.from('jatha_types')
+      .select('id, destination, department')
       .eq('is_active', true)
-      .order('centre_name')
-      .then(({ data }) => {
-        if (data) setAllCentres(data.map(c => c.centre_name))
-      })
+      .order('sort_order')
+      .then(({ data }) => { if (data) setJathaTypes(data as JathaType[]) })
   }, [])
 
-  const handleChange = (key: keyof FormData, value: string | boolean) => {
-    setForm(f => ({ ...f, [key]: value }))
-    setError('')
-  }
+  // Load existing schedule for edit
+  useEffect(() => {
+    if (!isEdit || !id) return
+    const load = async () => {
+      setLoading(true)
+      try {
+        const [schedRes, quotaRes] = await Promise.all([
+          supabase.from('sewa_schedule').select('*').eq('id', id).single(),
+          supabase.from('sewa_quota').select('id, centre, quota_count').eq('sewa_schedule_id', id),
+        ])
+        const s = schedRes.data as Schedule
+        setExisting(s)
+        setSelectedTypeId(s.jatha_type_id)
+        setFromDate(s.from_date)
+        setToDate(s.to_date)
+        setTotalRequired(s.total_required)
+        setDescription(s.description ?? '')
 
-  // Auto-generate jatha name from fields
-  const autoName = () => {
-    if (form.destination && form.department && form.from_date) {
-      const month = new Date(form.from_date).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-      return `${form.destination} ${form.department} ${month}`
+        // Map existing quotas onto the fixed centre list
+        const dbMap = new Map((quotaRes.data ?? []).map((q: any) => [q.centre, { count: q.quota_count, db_id: q.id }]))
+        setQuotas(MAIN_CENTRES.map(c => {
+          const db = dbMap.get(c)
+          return { centre: c, quota_count: db?.count ?? 0, db_id: db?.db_id }
+        }))
+      } finally { setLoading(false) }
     }
-    return ''
-  }
-
-  const validateStep1 = () => {
-    if (!form.destination)  return 'Select a destination'
-    if (!form.department)   return 'Select a department'
-    if (!form.from_date)    return 'Set start date'
-    if (!form.to_date)      return 'Set end date'
-    if (form.to_date < form.from_date) return 'End date must be after start date'
-    return ''
-  }
-
-  const goToStep2 = () => {
-    const err = validateStep1()
-    if (err) { setError(err); return }
-    // Auto-fill name if empty
-    if (!form.jatha_name) {
-      setForm(f => ({ ...f, jatha_name: autoName() }))
-    }
-    setError('')
-    setStep(2)
-  }
-
-  const addCentre = (centre: string) => {
-    if (selected.find(s => s.centre === centre)) return
-    setSelected(prev => [...prev, { centre, quota_count: 0 }])
-    setCentreSearch('')
-  }
-
-  const removeCentre = (centre: string) => {
-    setSelected(prev => prev.filter(s => s.centre !== centre))
-  }
+    load()
+  }, [isEdit, id])
 
   const updateQuota = (centre: string, val: string) => {
-    const n = parseInt(val) || 0
-    setSelected(prev => prev.map(s => s.centre === centre ? { ...s, quota_count: n } : s))
-  }
-
-  const addAllCentres = () => {
-    const existing = new Set(selected.map(s => s.centre))
-    const toAdd = allCentres.filter(c => !existing.has(c))
-    setSelected(prev => [...prev, ...toAdd.map(c => ({ centre: c, quota_count: 0 }))])
+    const n = Math.max(0, parseInt(val) || 0)
+    setQuotas(prev => prev.map(q => q.centre === centre ? { ...q, quota_count: n } : q))
   }
 
   const handleSave = async (publish: boolean) => {
     if (!user) return
-    if (selected.length === 0) { setError('Add at least one centre'); return }
-    const zeroQuota = selected.filter(s => s.quota_count === 0)
-    if (zeroQuota.length > 0 && !window.confirm(`${zeroQuota.length} centre(s) have 0 quota. Continue?`)) return
+    if (!selectedTypeId)         { setError('Select a jatha type'); return }
+    if (!fromDate || !toDate)    { setError('Set dates'); return }
+    if (toDate < fromDate)       { setError('End date must be after start date'); return }
+    if (totalRequired <= 0)      { setError('Enter total required count'); return }
+    if (activeQuotas.length === 0) { setError('At least one centre must have a count > 0'); return }
+    if (totalAssigned > totalRequired) {
+      setError(`Total assigned (${totalAssigned}) exceeds total required (${totalRequired}). Adjust counts.`)
+      return
+    }
 
     setSaving(true)
     setError('')
+
     try {
-      // Create schedule
-      const { data: schedule, error: schedErr } = await supabase
-        .from('jatha_schedule')
-        .insert({
-          jatha_name:   form.jatha_name || autoName(),
-          destination:  form.destination,
-          department:   form.department,
-          is_bhati:     form.is_bhati,
-          from_date:    form.from_date,
-          to_date:      form.to_date,
-          description:  form.description || null,
-          is_published: publish,
-          is_active:    true,
-          created_by:   user.badge_number,
-        })
-        .select('id')
-        .single()
+      const type = jathaTypes.find(t => t.id === selectedTypeId)!
+      const name = autoName
 
-      if (schedErr) throw schedErr
+      if (isEdit && id) {
+        // Update schedule
+        await supabase.from('sewa_schedule').update({
+          jatha_type_id:  selectedTypeId,
+          destination:    type.destination,
+          department:     type.department,
+          jatha_name:     name,
+          from_date:      fromDate,
+          to_date:        toDate,
+          total_required: totalRequired,
+          is_published:   publish,
+          description:    description || null,
+        }).eq('id', id)
 
-      // Insert quotas
-      const quotaRows = selected.map(s => ({
-        jatha_schedule_id: schedule.id,
-        centre:            s.centre,
-        quota_count:       s.quota_count,
-        set_by:            user.badge_number,
-      }))
+        // Upsert quotas: update existing, insert new, delete removed
+        for (const q of quotas) {
+          if (q.quota_count > 0) {
+            if (q.db_id) {
+              await supabase.from('sewa_quota').update({ quota_count: q.quota_count, set_by: user.badge_number, set_at: new Date().toISOString() }).eq('id', q.db_id)
+            } else {
+              await supabase.from('sewa_quota').insert({ sewa_schedule_id: parseInt(id), centre: q.centre, quota_count: q.quota_count, set_by: user.badge_number })
+            }
+          } else if (q.db_id) {
+            // Was > 0 before, now 0 — delete
+            await supabase.from('sewa_quota').delete().eq('id', q.db_id)
+          }
+        }
 
-      const { error: quotaErr } = await supabase
-        .from('jatha_quota')
-        .insert(quotaRows)
+        navigate(`/jatha-schedule/${id}?saved=1`)
+      } else {
+        // Create schedule
+        const { data: newSched, error: schedErr } = await supabase
+          .from('sewa_schedule')
+          .insert({
+            jatha_type_id:  selectedTypeId,
+            destination:    type.destination,
+            department:     type.department,
+            jatha_name:     name,
+            from_date:      fromDate,
+            to_date:        toDate,
+            total_required: totalRequired,
+            is_published:   publish,
+            description:    description || null,
+            created_by:     user.badge_number,
+          })
+          .select('id').single()
 
-      if (quotaErr) throw quotaErr
+        if (schedErr) throw schedErr
 
-      navigate(`/jatha-schedule/${schedule.id}`)
+        // Insert quotas for centres with count > 0 only
+        const quotaRows = activeQuotas.map(q => ({
+          sewa_schedule_id: newSched.id,
+          centre:           q.centre,
+          quota_count:      q.quota_count,
+          set_by:           user.badge_number,
+        }))
+        await supabase.from('sewa_quota').insert(quotaRows)
+
+        navigate(`/jatha-schedule/${newSched.id}`)
+      }
     } catch (err: any) {
       setError(err.message ?? 'Failed to save')
     } finally {
@@ -167,305 +223,247 @@ export default function JathaScheduleFormPage() {
     }
   }
 
-  const filteredCentres = allCentres.filter(c =>
-    c.toLowerCase().includes(centreSearch.toLowerCase()) &&
-    !selected.find(s => s.centre === c)
-  )
+  const togglePublish = async () => {
+    if (!existing || !id) return
+    const newVal = !existing.is_published
+    await supabase.from('sewa_schedule').update({ is_published: newVal }).eq('id', id)
+    setExisting(e => e ? { ...e, is_published: newVal } : e)
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="h-10 bg-slate-100 rounded-xl animate-pulse w-1/3" />
+        <div className="h-48 bg-slate-100 rounded-xl animate-pulse" />
+        <div className="h-96 bg-slate-100 rounded-xl animate-pulse" />
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
 
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <Link to="/jatha-schedule" className="p-2 rounded-xl bg-slate-100 text-slate-600 active:bg-slate-200 touch-manipulation">
-          <ChevronLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-base font-semibold text-slate-800">New Jatha Schedule</h1>
-          <p className="text-xs text-slate-400">नया जत्था शेड्यूल</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Link to="/jatha-schedule" className="p-2 rounded-xl bg-slate-100 text-slate-600 active:bg-slate-200 touch-manipulation">
+            <ChevronLeft size={18} />
+          </Link>
+          <div>
+            <h1 className="text-base font-semibold text-slate-800">
+              {isEdit ? 'Edit Schedule' : 'New Jatha Schedule'}
+            </h1>
+            <p className="text-xs text-slate-400">{isEdit ? 'शेड्यूल संपादित करें' : 'नया जत्था शेड्यूल'}</p>
+          </div>
         </div>
-      </div>
-
-      {/* Step indicator */}
-      <div className="flex items-center gap-3">
-        {[
-          { n: 1, label: 'Schedule Details' },
-          { n: 2, label: 'Assign Centres & Quotas' },
-        ].map((s, i) => (
-          <div key={s.n} className="flex items-center gap-2">
-            {i > 0 && <div className={`h-0.5 w-8 ${step >= s.n ? 'bg-maroon-500' : 'bg-slate-200'}`} />}
-            <div className={`flex items-center gap-2 ${step >= s.n ? 'text-maroon-600' : 'text-slate-400'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                step >= s.n ? 'bg-maroon-600 text-white' : 'bg-slate-200 text-slate-400'
-              }`}>{s.n}</div>
-              <span className="text-xs font-medium hidden sm:block">{s.label}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── STEP 1: Schedule details ── */}
-      {step === 1 && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Jatha Details</p>
-
-            {/* Type toggle */}
-            <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-2">
-                Jatha Type
-              </label>
-              <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-                <button
-                  onClick={() => handleChange('is_bhati', false)}
-                  className={[
-                    'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all touch-manipulation',
-                    !form.is_bhati ? 'bg-maroon-600 text-white shadow-sm' : 'text-slate-500',
-                  ].join(' ')}
-                >
-                  Beas / Outstation
-                </button>
-                <button
-                  onClick={() => handleChange('is_bhati', true)}
-                  className={[
-                    'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all touch-manipulation',
-                    form.is_bhati ? 'bg-navy-600 text-white shadow-sm' : 'text-slate-500',
-                  ].join(' ')}
-                >
-                  Bhati
-                </button>
-              </div>
-            </div>
-
-            {/* Destination */}
-            <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-                Destination (गंतव्य) *
-              </label>
-              <select
-                value={form.destination}
-                onChange={e => handleChange('destination', e.target.value)}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-              >
-                <option value="">Select destination</option>
-                {DESTINATIONS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-
-            {/* Department */}
-            <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-                Department (विभाग) *
-              </label>
-              <select
-                value={form.department}
-                onChange={e => handleChange('department', e.target.value)}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-              >
-                <option value="">Select department</option>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-
-            {/* Dates */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">From Date *</label>
-                <input type="date" value={form.from_date}
-                  onChange={e => handleChange('from_date', e.target.value)}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">To Date *</label>
-                <input type="date" value={form.to_date}
-                  onChange={e => handleChange('to_date', e.target.value)}
-                  min={form.from_date}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-                />
-              </div>
-            </div>
-
-            {/* Jatha name */}
-            <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-                Jatha Name
-                <span className="text-slate-300 font-normal ml-1">(auto-generated if left blank)</span>
-              </label>
-              <input
-                value={form.jatha_name}
-                onChange={e => handleChange('jatha_name', e.target.value)}
-                placeholder={autoName() || 'e.g. Beas Langar March 2026'}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-              />
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
-                Notes (optional)
-              </label>
-              <textarea
-                value={form.description}
-                onChange={e => handleChange('description', e.target.value)}
-                placeholder="Any notes for Centre Admins..."
-                rows={2}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 resize-none"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl">
-              <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
-
-          <button
-            onClick={goToStep2}
-            className="w-full py-4 bg-maroon-600 text-white rounded-xl text-sm font-semibold active:scale-95 transition-all touch-manipulation"
-          >
-            Next: Assign Centres →
+        {isEdit && existing && (
+          <button onClick={togglePublish}
+            className={['flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold touch-manipulation',
+              existing.is_published
+                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                : 'bg-green-50 text-green-700 border border-green-200'].join(' ')}>
+            {existing.is_published ? <><EyeOff size={12} />Unpublish</> : <><Eye size={12} />Publish</>}
           </button>
+        )}
+      </div>
+
+      {/* Auto name preview */}
+      {autoName && (
+        <div className="bg-maroon-50 border border-maroon-200 rounded-xl px-4 py-3">
+          <p className="text-[10px] text-maroon-500 font-semibold uppercase tracking-wide mb-0.5">Jatha Name (Auto-generated)</p>
+          <p className="text-sm font-bold text-maroon-800">{autoName}</p>
         </div>
       )}
 
-      {/* ── STEP 2: Centre quotas ── */}
-      {step === 2 && (
-        <div className="space-y-4">
+      {/* Schedule details */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Schedule Details</p>
 
-          {/* Summary card */}
-          <div className="bg-maroon-50 border border-maroon-200 rounded-xl p-4">
-            <p className="text-sm font-semibold text-maroon-800">
-              {form.jatha_name || autoName()}
-            </p>
-            <p className="text-xs text-maroon-600 mt-0.5">
-              {form.destination} · {form.department} ·{' '}
-              {form.is_bhati ? 'Bhati' : 'Beas/Outstation'}
-            </p>
-            <p className="text-xs text-maroon-500 mt-0.5">
-              {new Date(form.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-              {' – '}
-              {new Date(form.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </p>
-          </div>
-
-          {/* Centre search + add */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Participating Centres ({selected.length})
-              </p>
+        {/* Jatha type picker */}
+        <div>
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-2">
+            Destination · Department *
+          </label>
+          <div className="grid grid-cols-1 gap-1.5 max-h-52 overflow-y-auto border border-slate-200 rounded-xl p-2">
+            {jathaTypes.map(t => (
               <button
-                onClick={addAllCentres}
-                className="text-xs text-maroon-600 font-medium touch-manipulation"
+                key={t.id}
+                onClick={() => setSelectedTypeId(t.id)}
+                className={[
+                  'flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all text-left touch-manipulation',
+                  selectedTypeId === t.id
+                    ? 'bg-maroon-600 text-white'
+                    : 'hover:bg-slate-50 text-slate-700',
+                ].join(' ')}
               >
-                + Add All 41
+                <span className="font-medium">{t.destination}</span>
+                <span className={selectedTypeId === t.id ? 'text-white/70 text-xs' : 'text-slate-400 text-xs'}>
+                  {t.department}
+                </span>
               </button>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            {/* Search to add */}
-            <div className="relative">
-              <input
-                value={centreSearch}
-                onChange={e => setCentreSearch(e.target.value)}
-                placeholder="Search centre to add..."
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
-              />
-              {centreSearch && filteredCentres.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
-                  {filteredCentres.map(c => (
-                    <button
-                      key={c}
-                      onClick={() => addCentre(c)}
-                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-maroon-50 flex items-center justify-between touch-manipulation"
-                    >
-                      {c}
-                      <Plus size={13} className="text-maroon-500" />
-                    </button>
-                  ))}
-                </div>
+        {/* Dates */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">From Date *</label>
+            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400" />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">To Date *</label>
+            <input type="date" value={toDate} min={fromDate} onChange={e => setToDate(e.target.value)}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400" />
+          </div>
+        </div>
+
+        {/* Total required */}
+        <div>
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">
+            Total Sewadars Required (Overall) *
+          </label>
+          <input
+            type="number" inputMode="numeric" min={0}
+            value={totalRequired || ''}
+            onChange={e => setTotalRequired(parseInt(e.target.value) || 0)}
+            placeholder="e.g. 500"
+            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400"
+          />
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide block mb-1">Notes (optional)</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="Notes for Centre Admins..." rows={2}
+            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 resize-none" />
+        </div>
+      </div>
+
+      {/* Centre quota table */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-700">Centre-wise Count (केंद्र-वार गिनती)</h3>
+            <div className="text-right">
+              <p className="text-xs font-bold text-maroon-600">{totalAssigned} assigned</p>
+              {totalRequired > 0 && (
+                <p className={`text-[10px] font-medium ${remaining < 0 ? 'text-red-500' : remaining === 0 ? 'text-green-600' : 'text-slate-400'}`}>
+                  {remaining > 0 ? `${remaining} remaining` : remaining === 0 ? '✓ Complete' : `${Math.abs(remaining)} over limit`}
+                </p>
               )}
             </div>
+          </div>
+        </div>
 
-            {/* Selected centres with quota inputs */}
-            {selected.length === 0 ? (
-              <div className="py-6 text-center">
-                <p className="text-sm text-slate-400">No centres added yet</p>
-                <p className="text-xs text-slate-300 mt-1">Search above or click "Add All 41"</p>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {/* Total */}
-                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded-lg text-xs font-medium text-slate-600">
-                  <span>{selected.length} centres selected</span>
-                  <span>Total quota: {selected.reduce((s, c) => s + c.quota_count, 0)}</span>
-                </div>
+        {/* Progress bar */}
+        {totalRequired > 0 && (
+          <div className="px-4 py-2 border-b border-slate-50">
+            <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  totalAssigned > totalRequired ? 'bg-red-500' :
+                  totalAssigned === totalRequired ? 'bg-green-500' : 'bg-maroon-500'
+                }`}
+                style={{ width: `${Math.min(totalRequired > 0 ? (totalAssigned / totalRequired) * 100 : 0, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
 
-                {selected.map(s => (
-                  <div key={s.centre} className="flex items-center gap-3 px-3 py-2.5 bg-slate-50 rounded-lg">
-                    <p className="flex-1 text-sm font-medium text-slate-700 truncate">{s.centre}</p>
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-8">#</th>
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Centre (केंद्र)</th>
+                <th className="text-center px-4 py-2.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-28">Count (गिनती)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {quotas.map((q, idx) => (
+                <tr key={q.centre} className={q.quota_count > 0 ? 'bg-maroon-50/30' : ''}>
+                  <td className="px-4 py-2.5 text-[11px] text-slate-400">{idx + 1}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-700">{q.centre}</span>
+                      {q.quota_count > 0 && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-maroon-500 flex-shrink-0" />
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-center">
                     <input
                       type="number"
                       inputMode="numeric"
                       min={0}
                       max={999}
-                      value={s.quota_count || ''}
-                      onChange={e => updateQuota(s.centre, e.target.value)}
+                      value={q.quota_count || ''}
+                      onChange={e => updateQuota(q.centre, e.target.value)}
                       placeholder="0"
-                      className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-center font-semibold focus:outline-none focus:border-maroon-400"
+                      className={[
+                        'w-20 px-2 py-1.5 text-center text-sm font-semibold border rounded-lg focus:outline-none focus:border-maroon-400 transition-colors',
+                        q.quota_count > 0
+                          ? 'border-maroon-300 bg-maroon-50 text-maroon-700'
+                          : 'border-slate-200 text-slate-400',
+                      ].join(' ')}
                     />
-                    <button
-                      onClick={() => removeCentre(s.centre)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 touch-manipulation"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {/* Footer totals */}
+            <tfoot>
+              <tr className="bg-slate-50 border-t border-slate-200">
+                <td colSpan={2} className="px-4 py-2.5 text-xs font-semibold text-slate-600">
+                  Total · {activeQuotas.length} centres assigned
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={`text-sm font-bold ${
+                    totalRequired > 0 && totalAssigned > totalRequired ? 'text-red-600' :
+                    totalRequired > 0 && totalAssigned === totalRequired ? 'text-green-600' : 'text-maroon-600'
+                  }`}>{totalAssigned}</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
 
-          {error && (
-            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl">
-              <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
-
-          {/* Save buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setStep(1)}
-              className="py-3.5 border-2 border-slate-200 rounded-xl text-sm font-semibold text-slate-600 active:scale-95 transition-transform touch-manipulation"
-            >
-              ← Back
-            </button>
-            <button
-              onClick={() => handleSave(false)}
-              disabled={saving}
-              className="py-3.5 border-2 border-maroon-200 rounded-xl text-sm font-semibold text-maroon-700 active:scale-95 transition-transform touch-manipulation disabled:opacity-50"
-            >
-              Save Draft
-            </button>
-          </div>
-          <button
-            onClick={() => handleSave(true)}
-            disabled={saving}
-            className="w-full py-4 bg-maroon-600 text-white rounded-xl text-sm font-semibold active:scale-95 transition-all touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {saving
-              ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</>
-              : <><Save size={15} /> Save & Publish</>
-            }
-          </button>
-          <p className="text-center text-xs text-slate-400">
-            Publishing makes the schedule visible to assigned Centre Admins
-          </p>
+      {/* Error */}
+      {error && (
+        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-xl">
+          <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
+
+      {/* Save buttons */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => handleSave(false)}
+          disabled={saving}
+          className="py-3.5 border-2 border-maroon-200 rounded-xl text-sm font-semibold text-maroon-700 active:scale-95 transition-transform touch-manipulation disabled:opacity-50"
+        >
+          {isEdit ? 'Save Changes' : 'Save as Draft'}
+        </button>
+        <button
+          onClick={() => handleSave(true)}
+          disabled={saving}
+          className="py-3.5 bg-maroon-600 text-white rounded-xl text-sm font-semibold active:scale-95 transition-all touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {saving
+            ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving...</>
+            : <><Save size={15} />{isEdit ? 'Save & Publish' : 'Save & Publish'}</>
+          }
+        </button>
+      </div>
+      <p className="text-center text-xs text-slate-400 pb-4">
+        Only published schedules are visible to Centre Admins
+      </p>
     </div>
   )
 }
