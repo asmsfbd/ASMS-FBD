@@ -333,4 +333,4 @@ export default function SangatFormPage() {
       </form>
     </div>
   )
-}
+} 
