@@ -18,10 +18,11 @@ async function hasLinearBarcodeSupport(): Promise<boolean> {
 }
 
 async function loadPolyfill() {
+  // @ts-ignore — CDN import for iOS polyfill, not in node_modules
   const { BarcodeDetectorPolyfill } = await import(
     /* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@0.9.21/dist/es/index.js'
   )
-  ;(window as any).BarcodeDetector = BarcodeDetectorPolyfill
+    ; (window as any).BarcodeDetector = BarcodeDetectorPolyfill
 }
 
 export interface BarcodeScannerHandle {
@@ -37,18 +38,18 @@ interface BarcodeScannerProps {
 
 const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
   function BarcodeScanner({ onScan, active = true }, ref) {
-    const videoRef      = useRef<HTMLVideoElement>(null)
-    const streamRef     = useRef<MediaStream | null>(null)
-    const rafRef        = useRef<number | null>(null)
-    const detectorRef   = useRef<any>(null)
-    const mountedRef    = useRef(true)
-    const lastScanRef   = useRef({ badge: '', time: 0 })
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const streamRef = useRef<MediaStream | null>(null)
+    const rafRef = useRef<number | null>(null)
+    const detectorRef = useRef<any>(null)
+    const mountedRef = useRef(true)
+    const lastScanRef = useRef({ badge: '', time: 0 })
     const isDetectingRef = useRef(false)
 
-    const [status,      setStatus]      = useState<'loading' | 'ready' | 'error'>('loading')
-    const [errorMsg,    setErrorMsg]    = useState('')
+    const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+    const [errorMsg, setErrorMsg] = useState('')
     const [engineLabel, setEngineLabel] = useState('')
-    const [fps,         setFps]         = useState(0)
+    const [fps, setFps] = useState(0)
     const [lastScanned, setLastScanned] = useState('')
     const fpsRef = useRef({ frames: 0, last: Date.now() })
 
@@ -97,7 +98,7 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
-            width:  { ideal: 1920 },
+            width: { ideal: 1920 },
             height: { ideal: 1080 },
           },
           audio: false,
@@ -165,8 +166,8 @@ const BarcodeScanner = forwardRef<BarcodeScannerHandle, BarcodeScannerProps>(
     }, [active, startScanner, stopScanner])
 
     useImperativeHandle(ref, () => ({
-      stop:    stopScanner,
-      resume:  () => { if (mountedRef.current) startScanner() },
+      stop: stopScanner,
+      resume: () => { if (mountedRef.current) startScanner() },
       restart: () => { stopScanner(); setTimeout(() => { if (mountedRef.current) startScanner() }, 100) },
     }), [startScanner, stopScanner])
 
