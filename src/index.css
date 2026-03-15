@@ -2,85 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── ASMS Global Styles ─────────────────────────────────────── */
-
 @layer base {
-  * {
-    box-sizing: border-box;
-  }
+  * { box-sizing: border-box; }
 
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
+    /* Prevent zoom on input focus on iOS */
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
     @apply bg-slate-50 text-slate-800;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    /* Prevent overscroll bounce on iOS */
+    overscroll-behavior: none;
   }
 
-  /* Scrollbar styling */
-  ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+  /* Inputs — prevent iOS zoom (font-size must be >= 16px) */
+  input, select, textarea {
+    font-size: 16px !important;
   }
-  ::-webkit-scrollbar-track {
-    @apply bg-slate-100;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded-full;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-400;
-  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { @apply bg-slate-100; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
 }
 
 @layer components {
-  /* Focus ring for accessibility */
-  .focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-1;
+  /* Safe bottom padding for iPhone home bar */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  /* Page section heading */
-  .section-title {
-    @apply text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3;
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
   }
 
-  /* Divider */
-  .divider {
-    @apply border-t border-slate-100 my-4;
+  /* Touch-friendly tap target */
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  /* Status pill base */
-  .status-pill {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border;
-  }
+  /* ASMS table */
+  .asms-table { @apply w-full text-sm border-collapse; }
+  .asms-table th { @apply text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-200 bg-slate-50; }
+  .asms-table td { @apply px-3 py-2.5 border-b border-slate-100 text-slate-700; }
+  .asms-table tr:last-child td { @apply border-b-0; }
+  .asms-table tbody tr:hover td { @apply bg-slate-50; }
 
-  /* Table base */
-  .asms-table {
-    @apply w-full text-sm border-collapse;
-  }
-  .asms-table th {
-    @apply text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide
-           border-b border-slate-200 bg-slate-50;
-  }
-  .asms-table td {
-    @apply px-3 py-2.5 border-b border-slate-100 text-slate-700;
-  }
-  .asms-table tr:last-child td {
-    @apply border-b-0;
-  }
-  .asms-table tbody tr:hover td {
-    @apply bg-slate-50;
-  }
+  /* Badge chip */
+  .badge-chip { @apply font-mono text-xs bg-navy-50 text-navy-700 px-2 py-0.5 rounded; }
 
-  /* Badge mono chip */
-  .badge-chip {
-    @apply font-mono text-xs bg-navy-50 text-navy-700 px-2 py-0.5 rounded;
-  }
-
-  /* NR status colors */
+  /* NR status */
   .nr-status-draft     { @apply bg-slate-100 text-slate-600 border-slate-200; }
   .nr-status-submitted { @apply bg-navy-100 text-navy-700 border-navy-200; }
   .nr-status-approved  { @apply bg-green-100 text-green-700 border-green-200; }
@@ -89,38 +66,14 @@
 }
 
 @layer utilities {
-  /* Truncate with tooltip */
-  .truncate-tip {
-    @apply truncate cursor-default;
-  }
-
-  /* Fade-in animation */
   .fade-in {
     animation: fadeIn 0.2s ease-in-out;
   }
-
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* Slide-in from right */
-  .slide-in {
-    animation: slideIn 0.25s ease-out;
-  }
-
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateX(12px); }
-    to   { opacity: 1; transform: translateX(0); }
-  }
-
-  /* Pulse scan animation */
-  .scan-pulse {
-    animation: scanPulse 1.5s ease-in-out infinite;
-  }
-
-  @keyframes scanPulse {
-    0%, 100% { opacity: 0.4; }
-    50%       { opacity: 1; }
-  }
+  /* Active scale for buttons */
+  .active\:scale-98:active { transform: scale(0.98); }
 }
