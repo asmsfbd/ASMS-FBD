@@ -2,22 +2,23 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Calendar, FileText,
   ScanLine, CheckSquare, BarChart3, Settings,
-  LogOut, ChevronRight, X
+  LogOut, ChevronRight, X, UserCircle
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { Role } from '@/types'
 
 interface NavItem {
-  label: string
+  label:   string
   labelHi: string
-  to: string
-  icon: React.ReactNode
-  roles: Role[]
+  to:      string
+  icon:    React.ReactNode
+  roles:   Role[]
 }
 
 const navItems: NavItem[] = [
   { label: 'Dashboard',        labelHi: 'डैशबोर्ड',      to: '/dashboard',        icon: <LayoutDashboard size={16} />, roles: ['aso','centre_admin','scanner','jatha_sewadar'] },
   { label: 'Sewadars',         labelHi: 'सेवादार',        to: '/sewadars',          icon: <Users size={16} />,           roles: ['aso','centre_admin'] },
+  { label: 'Sangat',           labelHi: 'संगत',           to: '/sangat',            icon: <UserCircle size={16} />,      roles: ['aso','centre_admin'] },
   { label: 'Daily Duty',       labelHi: 'दैनिक ड्यूटी',  to: '/scanner',           icon: <ScanLine size={16} />,        roles: ['scanner','aso'] },
   { label: 'Jatha Schedule',   labelHi: 'जत्था शेड्यूल', to: '/jatha-schedule',    icon: <Calendar size={16} />,        roles: ['aso','centre_admin'] },
   { label: 'Nominal Roles',    labelHi: 'नॉमिनल रोल',    to: '/nominal-roles',     icon: <FileText size={16} />,        roles: ['aso','centre_admin'] },
@@ -39,12 +40,12 @@ interface SidebarProps {
 
 export function Sidebar({ onClose }: SidebarProps) {
   const { user, signOut } = useAuth()
-  const navigate = useNavigate()
+  const navigate          = useNavigate()
 
   if (!user) return null
 
   const visibleItems = navItems.filter(item => item.roles.includes(user.role))
-  const roleInfo = roleLabels[user.role]
+  const roleInfo     = roleLabels[user.role]
 
   const handleSignOut = async () => {
     await signOut()
@@ -54,7 +55,7 @@ export function Sidebar({ onClose }: SidebarProps) {
   return (
     <aside className="w-56 min-h-screen bg-maroon-700 flex flex-col select-none">
 
-      {/* Header */}
+      {/* Logo */}
       <div className="px-4 py-4 border-b border-maroon-600 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gold-500 flex items-center justify-center flex-shrink-0">
@@ -65,7 +66,6 @@ export function Sidebar({ onClose }: SidebarProps) {
             <p className="text-white/50 text-[10px] leading-tight">Faridabad Area</p>
           </div>
         </div>
-        {/* Close button — mobile only */}
         {onClose && (
           <button onClick={onClose} className="lg:hidden p-1 text-white/60 hover:text-white">
             <X size={18} />
@@ -83,7 +83,7 @@ export function Sidebar({ onClose }: SidebarProps) {
         <p className="text-white/40 text-[10px] truncate">{user.centre}</p>
       </div>
 
-      {/* Nav items */}
+      {/* Nav */}
       <nav className="flex-1 py-3 overflow-y-auto">
         {visibleItems.map(item => (
           <NavLink
