@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── ASMS Global Styles ─────────────────────────────────────── */
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-800;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-slate-100;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+  }
+}
+
+@layer components {
+  /* Focus ring for accessibility */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-maroon-400 focus:ring-offset-1;
+  }
+
+  /* Page section heading */
+  .section-title {
+    @apply text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-slate-100 my-4;
+  }
+
+  /* Status pill base */
+  .status-pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border;
+  }
+
+  /* Table base */
+  .asms-table {
+    @apply w-full text-sm border-collapse;
+  }
+  .asms-table th {
+    @apply text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide
+           border-b border-slate-200 bg-slate-50;
+  }
+  .asms-table td {
+    @apply px-3 py-2.5 border-b border-slate-100 text-slate-700;
+  }
+  .asms-table tr:last-child td {
+    @apply border-b-0;
+  }
+  .asms-table tbody tr:hover td {
+    @apply bg-slate-50;
+  }
+
+  /* Badge mono chip */
+  .badge-chip {
+    @apply font-mono text-xs bg-navy-50 text-navy-700 px-2 py-0.5 rounded;
+  }
+
+  /* NR status colors */
+  .nr-status-draft     { @apply bg-slate-100 text-slate-600 border-slate-200; }
+  .nr-status-submitted { @apply bg-navy-100 text-navy-700 border-navy-200; }
+  .nr-status-approved  { @apply bg-green-100 text-green-700 border-green-200; }
+  .nr-status-issued    { @apply bg-maroon-100 text-maroon-700 border-maroon-200; }
+  .nr-status-rejected  { @apply bg-red-100 text-red-700 border-red-200; }
+}
+
+@layer utilities {
+  /* Truncate with tooltip */
+  .truncate-tip {
+    @apply truncate cursor-default;
+  }
+
+  /* Fade-in animation */
+  .fade-in {
+    animation: fadeIn 0.2s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Slide-in from right */
+  .slide-in {
+    animation: slideIn 0.25s ease-out;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Pulse scan animation */
+  .scan-pulse {
+    animation: scanPulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes scanPulse {
+    0%, 100% { opacity: 0.4; }
+    50%       { opacity: 1; }
+  }
+}
