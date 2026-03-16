@@ -312,24 +312,30 @@ function JathaCardView({ card, isSubCentre, parentCentre }: {
         {/* Action button */}
         <div className="pt-3 border-t border-slate-100">
           {!card.nr_id ? (
-            // No NR exists yet
             card.is_owner ? (
-              // Owner creates the NR
+              // Owner: create new NR
               <Link to={`/nominal-roles/new?schedule=${card.schedule_id}`}>
                 <button className="w-full py-2.5 bg-maroon-600 text-white rounded-lg text-xs font-semibold active:scale-95 touch-manipulation">
                   Create Nominal Role →
                 </button>
               </Link>
             ) : (
-              // Sub-centre waiting for parent to create NR
+              // Sub-centre: waiting for parent to create NR
               <div className="text-center py-1">
                 <p className="text-xs text-amber-600 flex items-center justify-center gap-1">
                   <Clock size={12} /> Waiting for {parentCentre} to create NR
                 </p>
               </div>
             )
+          ) : card.nr_status === 'draft' && !card.is_owner ? (
+            // Sub-centre: NR exists and is draft — go directly to edit to add members
+            <Link to={`/nominal-roles/${card.nr_id}/edit`}>
+              <button className="w-full py-2.5 bg-maroon-600 text-white rounded-lg text-xs font-semibold active:scale-95 touch-manipulation flex items-center justify-center gap-1.5">
+                Add My Members <ChevronRight size={12} />
+              </button>
+            </Link>
           ) : (
-            // NR exists — link to add/view members
+            // NR exists — view/manage
             <Link to={`/nominal-roles/${card.nr_id}`}>
               <button className={[
                 'w-full py-2.5 rounded-lg text-xs font-semibold active:scale-95 touch-manipulation flex items-center justify-center gap-1.5',
@@ -337,9 +343,7 @@ function JathaCardView({ card, isSubCentre, parentCentre }: {
                   ? 'border border-maroon-200 text-maroon-700'
                   : 'border border-slate-200 text-slate-600',
               ].join(' ')}>
-                {card.nr_status === 'draft' && !card.is_owner ? 'Add My Members' :
-                 card.nr_status === 'draft' && card.is_owner ? 'Manage NR' :
-                 'View NR'}
+                {card.nr_status === 'draft' ? 'Manage NR' : 'View NR'}
                 <ChevronRight size={12} />
               </button>
             </Link>

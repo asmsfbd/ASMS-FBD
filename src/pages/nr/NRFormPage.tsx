@@ -139,16 +139,47 @@ export default function NRFormPage() {
         })))
 
       } else if (scheduleIdParam && user) {
+        const schedId = parseInt(scheduleIdParam)
+
+        // Check if NR already exists for this schedule + owner centre
+        // For sub-centres, owner is the parent centre
+        const { data: centreInfo } = await supabase
+          .from('centres').select('parent_centre')
+          .eq('centre_name', user.centre).single()
+        const isSub   = centreInfo?.parent_centre !== user.centre
+        const ownerC  = isSub ? (centreInfo?.parent_centre ?? user.centre) : user.centre
+
+        const { data: existingNR } = await supabase
+          .from('nominal_roles')
+          .select('id')
+          .eq('sewa_schedule_id', schedId)
+          .eq('centre', ownerC)
+          .maybeSingle()
+
+        if (existingNR) {
+          // NR already exists — redirect to it instead of creating a new one
+          navigate(`/nominal-roles/${existingNR.id}`, { replace: true })
+          return
+        }
+
         const { data: s } = await supabase.from('sewa_schedule')
           .select('id,jatha_name,destination,department,from_date,to_date')
-          .eq('id', scheduleIdParam).single()
+          .eq('id', schedId).single()
         if (s) setSchedule(s as Schedule)
-        setOwnerCentre(user.centre)
+        setOwnerCentre(ownerC)
 
         const { data: sq } = await supabase.from('sewa_quota')
-          .select('quota_count').eq('sewa_schedule_id', parseInt(scheduleIdParam))
-          .eq('centre', user.centre).maybeSingle()
+          .select('quota_count').eq('sewa_schedule_id', schedId)
+          .eq('centre', ownerC).maybeSingle()
         setMyQuota(sq?.quota_count ?? 0)
+
+        // Sub-centre quota
+        if (isSub) {
+          const { data: scq } = await supabase.from('sub_centre_quota')
+            .select('quota_count').eq('sewa_schedule_id', schedId)
+            .eq('sub_centre', user.centre).maybeSingle()
+          setMySubQuota(scq?.quota_count ?? 0)
+        }
       }
     } finally { setLoading(false) }
   }
