@@ -5,7 +5,7 @@ import {
   FileText, Star, Info, Download, ThumbsUp, ThumbsDown, Award,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { generateNRPDF } from '@/lib/nrPDF'
+import { generateNRExcel } from '@/lib/nrExcel'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/index'
 
@@ -249,7 +249,7 @@ export default function NRDetailPage() {
     }
   }
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadExcel = async () => {
     if (!nr || !id) return
     setPdfLoading(true)
     try {
@@ -287,7 +287,7 @@ export default function NRDetailPage() {
 
       const jathedarMember = members.find(m => m.is_jathedar) ?? null
 
-      await generateNRPDF({
+      await generateNRExcel({
         nr: {
           id: nr.id,
           centre: nr.centre,
@@ -306,24 +306,10 @@ export default function NRDetailPage() {
           female_count: nr.female_count,
         },
         sections: sectionData,
-        jathedar: jathedarMember ? {
-          serial_no: 0,
-          display_id: jathedarMember.display_id,
-          name: jathedarMember.name,
-          father_name: jathedarMember.father_name,
-          gender: jathedarMember.gender,
-          age: jathedarMember.age,
-          address: jathedarMember.address,
-          mobile: jathedarMember.mobile,
-          is_jathedar: true,
-          contributing_centre: jathedarMember.contributing_centre,
-          member_type: jathedarMember.member_type,
-          aadhaar_masked: jathedarMember.aadhaar_masked,
-        } : null,
       })
     } catch (err: any) {
-      console.error('PDF error:', err)
-      alert('PDF generation failed: ' + (err.message ?? 'Unknown error'))
+      console.error('Excel error:', err)
+      alert('Excel generation failed: ' + (err.message ?? 'Unknown error'))
     } finally {
       setPdfLoading(false)
     }
@@ -552,11 +538,11 @@ export default function NRDetailPage() {
       )}
 
       {(isOwner || isASO) && members.length > 0 && (
-        <button onClick={handleDownloadPDF} disabled={pdfLoading}
+        <button onClick={handleDownloadExcel} disabled={pdfLoading}
           className="w-full py-3 bg-navy-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
           {pdfLoading
-            ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating PDF...</>
-            : <><Download size={15} /> Download NR (PDF)</>
+            ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating Excel...</>
+            : <><Download size={15} /> Download NR (Excel)</>
           }
         </button>
       )}
