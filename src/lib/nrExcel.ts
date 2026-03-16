@@ -74,8 +74,10 @@ function getTodayDate(): string {
   return `${day} ${month} ${year}`
 }
 
-function loadTemplate(sheetName: 'Male' | 'Female'): XLSX.WorkSheet {
-  const wb = XLSX.readFile('public/NominalRole_Format.xlsx')
+async function loadTemplate(sheetName: 'Male' | 'Female'): Promise<XLSX.WorkSheet> {
+  const response = await fetch('/NominalRole_Format.xlsx')
+  const arrayBuffer = await response.arrayBuffer()
+  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' })
   return wb.Sheets[sheetName]
 }
 
@@ -200,12 +202,12 @@ function populateSheet(
   setCell(ws, 32, 5, `: ${formatDateDisplay(nr.to_date)}`)
 }
 
-function processSheet(
+async function processSheet(
   sheetName: 'Male' | 'Female',
   nr: NRForExcel,
   sections: SectionForExcel[]
-): XLSX.WorkSheet {
-  const ws = loadTemplate(sheetName)
+): Promise<XLSX.WorkSheet> {
+  const ws = await loadTemplate(sheetName)
 
   const genderFilter = sheetName === 'Male' ? 'M' : 'F'
   
@@ -237,8 +239,10 @@ export async function generateNRExcel(opts: GenerateExcelOptions): Promise<void>
 
   const wb = XLSX.utils.book_new()
 
-  const maleSheet = processSheet('Male', nr, sections)
-  const femaleSheet = processSheet('Female', nr, sections)
+  const [maleSheet, femaleSheet] = await Promise.all([
+    processSheet('Male', nr, sections),
+    processSheet('Female', nr, sections),
+  ])
 
   XLSX.utils.book_append_sheet(wb, maleSheet, 'Male')
   XLSX.utils.book_append_sheet(wb, femaleSheet, 'Female')
