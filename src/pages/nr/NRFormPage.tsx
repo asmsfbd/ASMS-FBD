@@ -357,10 +357,15 @@ export default function NRFormPage() {
 
       const myMems = myMembers
       if (myMems.length > 0) {
+        // Get current max serial_no from other centres to avoid clash
+        const otherMax = members
+          .filter(m => m.contributing_centre !== user.centre)
+          .reduce((max, m) => Math.max(max, (m as any).serial_no ?? 0), 0)
+
         const { error: ie } = await supabase.from('nr_members').insert(
           myMems.map((m, idx) => ({
             nominal_role_id: nrId,
-            serial_no: idx + 1,
+            serial_no: otherMax + idx + 1,
             display_id: m.display_id,
             member_type: m.member_type,
             sewadar_id: m.sewadar_id ?? null,

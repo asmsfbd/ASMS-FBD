@@ -22,7 +22,7 @@ export function useAuth() {
             .from('sewadars')
             .select('name')
             .eq('badge_number', userData.badge_number)
-            .single()
+            .maybeSingle()
 
           useAuthStore.setState({
             user: {
