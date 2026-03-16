@@ -36,11 +36,11 @@ function DashboardRouter() {
   const { user } = useAuth()
   if (!user) return null
   switch (user.role) {
-    case 'aso':           return <ASODashboard />
-    case 'centre_admin':  return <CentreAdminDashboard />
-    case 'scanner':       return <ScannerDashboard />
+    case 'aso': return <ASODashboard />
+    case 'centre_admin': return <CentreAdminDashboard />
+    case 'scanner': return <ScannerDashboard />
     case 'jatha_sewadar': return <JathaDashboard />
-    default:              return <ASODashboard />
+    default: return <ASODashboard />
   }
 }
 
@@ -59,34 +59,37 @@ function AuthenticatedApp() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route path="/dashboard"         element={<DashboardRouter />} />
-        <Route path="/scanner"           element={<RequireRole roles={['scanner','aso']}><ScannerDashboard /></RequireRole>} />
-        <Route path="/jatha-attendance"  element={<RequireRole roles={['jatha_sewadar','aso','centre_admin']}><JathaDashboard /></RequireRole>} />
+        <Route path="/dashboard" element={<DashboardRouter />} />
+        <Route path="/scanner" element={<RequireRole roles={['scanner', 'aso']}><ScannerDashboard /></RequireRole>} />
+        <Route path="/jatha-attendance" element={<RequireRole roles={['jatha_sewadar', 'aso', 'centre_admin']}><JathaDashboard /></RequireRole>} />
 
         {/* Phase 3 */}
-        <Route path="/sewadars"          element={<RequireRole roles={['centre_admin','aso']}><SewadarListPage /></RequireRole>} />
-        <Route path="/sewadars/:id"      element={<RequireRole roles={['centre_admin','aso']}><SewadarProfilePage /></RequireRole>} />
-        <Route path="/sangat"            element={<RequireRole roles={['centre_admin','aso']}><SangatListPage /></RequireRole>} />
-        <Route path="/sangat/new"        element={<RequireRole roles={['centre_admin','aso']}><SangatFormPage /></RequireRole>} />
-        <Route path="/sangat/:id"        element={<RequireRole roles={['centre_admin','aso']}><SangatProfilePage /></RequireRole>} />
-        <Route path="/sangat/:id/edit"   element={<RequireRole roles={['centre_admin','aso']}><SangatFormPage /></RequireRole>} />
+        <Route path="/sewadars" element={<RequireRole roles={['centre_admin', 'aso']}><SewadarListPage /></RequireRole>} />
+        <Route path="/sewadars/:id" element={<RequireRole roles={['centre_admin', 'aso']}><SewadarProfilePage /></RequireRole>} />
+        <Route path="/sangat" element={<RequireRole roles={['centre_admin', 'aso']}><SangatListPage /></RequireRole>} />
+        <Route path="/sangat/new" element={<RequireRole roles={['centre_admin', 'aso']}><SangatFormPage /></RequireRole>} />
+        <Route path="/sangat/:id" element={<RequireRole roles={['centre_admin', 'aso']}><SangatProfilePage /></RequireRole>} />
+        <Route path="/sangat/:id/edit" element={<RequireRole roles={['centre_admin', 'aso']}><SangatFormPage /></RequireRole>} />
 
         {/* Phase 4 */}
-        <Route path="/jatha-schedule"    element={<RequireRole roles={['centre_admin','aso']}><JathaScheduleListPage /></RequireRole>} />
+        <Route path="/jatha-schedule" element={<RequireRole roles={['centre_admin', 'aso']}><JathaScheduleListPage /></RequireRole>} />
         <Route path="/jatha-schedule/new" element={<RequireRole roles={['aso']}><JathaScheduleFormPage /></RequireRole>} />
         <Route path="/jatha-schedule/:id" element={<RequireRole roles={['aso']}><JathaScheduleFormPage /></RequireRole>} />
 
         {/* Phase 5 — Nominal Roles */}
-        <Route path="/nominal-roles"           element={<RequireRole roles={['centre_admin','aso']}><NRListPage /></RequireRole>} />
-        <Route path="/nominal-roles/new"       element={<RequireRole roles={['centre_admin','aso']}><NRFormPage /></RequireRole>} />
-        <Route path="/nominal-roles/:id"       element={<RequireRole roles={['centre_admin','aso']}><NRDetailPage /></RequireRole>} />
-        <Route path="/nominal-roles/:id/edit"  element={<RequireRole roles={['centre_admin','aso']}><NRFormPage /></RequireRole>} />
-
+        <Route path="/nominal-roles"
+          element={<RequireRole roles={['centre_admin', 'aso']}><NRListPage /></RequireRole>} />
+        <Route path="/nominal-roles/new"
+          element={<RequireRole roles={['centre_admin', 'aso']}><NRFormPage /></RequireRole>} />
+        <Route path="/nominal-roles/:id/edit"
+          element={<RequireRole roles={['centre_admin', 'aso']}><NRFormPage /></RequireRole>} />
+        <Route path="/nominal-roles/:id"
+          element={<RequireRole roles={['centre_admin', 'aso']}><NRDetailPage /></RequireRole>} />
         {/* Phase 8 */}
-        <Route path="/reports"           element={<RequireRole roles={['centre_admin','aso']}><Placeholder text="Reports — Phase 8" /></RequireRole>} />
+        <Route path="/reports" element={<RequireRole roles={['centre_admin', 'aso']}><Placeholder text="Reports — Phase 8" /></RequireRole>} />
 
         {/* Phase 10 */}
-        <Route path="/settings"          element={<RequireRole roles={['aso']}><Placeholder text="Settings — Phase 10" /></RequireRole>} />
+        <Route path="/settings" element={<RequireRole roles={['aso']}><Placeholder text="Settings — Phase 10" /></RequireRole>} />
 
         <Route path="*" element={<NotFound />} />
       </Route>
@@ -100,8 +103,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/"      element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
-        <Route path="/*"     element={<RequireAuth><AuthenticatedApp /></RequireAuth>} />
+        <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+        <Route path="/*" element={<RequireAuth><AuthenticatedApp /></RequireAuth>} />
       </Routes>
     </BrowserRouter>
   )

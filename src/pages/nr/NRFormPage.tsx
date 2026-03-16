@@ -207,9 +207,14 @@ export default function NRFormPage() {
   const clearJathedar = () => setMembers(prev => prev.map(m => ({ ...m, is_jathedar: false })))
 
   const updateSectionSrsId = (srsId: string) => {
-    setSections(prev => prev.map(s =>
-      s.centre === user?.centre ? { ...s, srs_id: srsId } : s
-    ))
+    setSections(prev => {
+      const exists = prev.find(s => s.centre === user?.centre)
+      if (exists) {
+        return prev.map(s => s.centre === user?.centre ? { ...s, srs_id: srsId } : s)
+      }
+      // Create new section entry for this centre
+      return [...prev, { centre: user?.centre ?? '', srs_id: srsId, is_ready: false, member_count: 0 }]
+    })
   }
 
   // Save NR (owner creates/updates header + all members)
@@ -541,12 +546,12 @@ export default function NRFormPage() {
                   <p className="text-[10px] text-slate-500">Added</p>
                 </div>
                 <div className={`rounded-xl p-2.5 ${remainingQuota === null ? 'bg-slate-50' :
-                    remainingQuota < 0 ? 'bg-red-50' :
-                      remainingQuota === 0 ? 'bg-green-50' : 'bg-amber-50'
+                  remainingQuota < 0 ? 'bg-red-50' :
+                    remainingQuota === 0 ? 'bg-green-50' : 'bg-amber-50'
                   }`}>
                   <p className={`text-lg font-bold ${remainingQuota === null ? 'text-slate-400' :
-                      remainingQuota < 0 ? 'text-red-600' :
-                        remainingQuota === 0 ? 'text-green-600' : 'text-amber-600'
+                    remainingQuota < 0 ? 'text-red-600' :
+                      remainingQuota === 0 ? 'text-green-600' : 'text-amber-600'
                     }`}>{remainingQuota === null ? '—' : Math.abs(remainingQuota)}</p>
                   <p className="text-[10px] text-slate-500">
                     {remainingQuota === null ? '' : remainingQuota < 0 ? 'Over' : remainingQuota === 0 ? 'Full ✓' : 'Left'}
