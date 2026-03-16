@@ -42,54 +42,54 @@ interface SangatResult {
 const VEHICLE_TYPES = ['Bus', 'Tempo', 'Car', 'Train', 'Van', 'Other']
 
 export default function NRFormPage() {
-  const { id }          = useParams<{ id: string }>()
-  const [searchParams]  = useSearchParams()
+  const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const scheduleIdParam = searchParams.get('schedule')
-  const isEdit          = !!id && id !== 'new'
-  const { user }        = useAuth()
-  const navigate        = useNavigate()
+  const isEdit = !!id && id !== 'new'
+  const { user } = useAuth()
+  const navigate = useNavigate()
 
-  const [schedule,      setSchedule]     = useState<Schedule | null>(null)
-  const [nrId,          setNRId]         = useState<number | null>(null)
-  const [nrStatus,      setNRStatus]     = useState('draft')
-  const [ownerCentre,   setOwnerCentre]  = useState('')
-  const [myQuota,       setMyQuota]      = useState(0)
-  const [mySubQuota,    setMySubQuota]   = useState(0)
-  const [vehicleType,   setVehicleType]  = useState('')
-  const [driverName,    setDriverName]   = useState('')
-  const [driverMobile,  setDriverMobile] = useState('')
-  const [sections,      setSections]     = useState<SectionStatus[]>([])
-  const [members,       setMembers]      = useState<NRMember[]>([])
-  const [loading,       setLoading]      = useState(true)
-  const [saving,        setSaving]       = useState(false)
-  const [markingReady,  setMarkingReady] = useState(false)
-  const [error,         setError]        = useState('')
-  const [activeTab,     setActiveTab]    = useState<'my-section' | 'all' | 'summary'>('my-section')
-  const [searchTab,     setSearchTab]    = useState<'sewadar' | 'sangat'>('sewadar')
-  const [searchQuery,   setSearchQuery]  = useState('')
-  const [searchRes,     setSearchRes]    = useState<(SewadarResult | SangatResult)[]>([])
-  const [searching,     setSearching]    = useState(false)
+  const [schedule, setSchedule] = useState<Schedule | null>(null)
+  const [nrId, setNRId] = useState<number | null>(null)
+  const [nrStatus, setNRStatus] = useState('draft')
+  const [ownerCentre, setOwnerCentre] = useState('')
+  const [myQuota, setMyQuota] = useState(0)
+  const [mySubQuota, setMySubQuota] = useState(0)
+  const [vehicleType, setVehicleType] = useState('')
+  const [driverName, setDriverName] = useState('')
+  const [driverMobile, setDriverMobile] = useState('')
+  const [sections, setSections] = useState<SectionStatus[]>([])
+  const [members, setMembers] = useState<NRMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [markingReady, setMarkingReady] = useState(false)
+  const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState<'my-section' | 'all' | 'summary'>('my-section')
+  const [searchTab, setSearchTab] = useState<'sewadar' | 'sangat'>('sewadar')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchRes, setSearchRes] = useState<(SewadarResult | SangatResult)[]>([])
+  const [searching, setSearching] = useState(false)
 
-  const isASO          = user?.role === 'aso'
-  const isOwner        = isASO || user?.centre === ownerCentre
-  const mySection      = sections.find(s => s.centre === user?.centre)
-  const iAmReady       = mySection?.is_ready ?? false
-  const canAddMembers  = nrStatus === 'draft' && !iAmReady
+  const isASO = user?.role === 'aso'
+  const isOwner = isASO || user?.centre === ownerCentre
+  const mySection = sections.find(s => s.centre === user?.centre)
+  const iAmReady = mySection?.is_ready ?? false
+  const canAddMembers = nrStatus === 'draft' && !iAmReady
   const canSubmitToASO = isOwner && nrStatus === 'draft'
 
-  const myMembers         = members.filter(m => m.contributing_centre === user?.centre)
-  const allMaleCount      = members.filter(m => m.gender === 'M').length
-  const allFemCount       = members.filter(m => m.gender === 'F').length
-  const myMaleCount       = myMembers.filter(m => m.gender === 'M').length
-  const myFemCount        = myMembers.filter(m => m.gender === 'F').length
-  const jathedar          = members.find(m => m.is_jathedar)
-  const effectiveQuota    = user?.centre === ownerCentre ? myQuota : mySubQuota
-  const remainingQuota    = effectiveQuota > 0 ? effectiveQuota - myMembers.length : null
-  const allSectionsReady  = sections.length > 0 && sections.every(s => s.is_ready)
+  const myMembers = members.filter(m => m.contributing_centre === user?.centre)
+  const allMaleCount = members.filter(m => m.gender === 'M').length
+  const allFemCount = members.filter(m => m.gender === 'F').length
+  const myMaleCount = myMembers.filter(m => m.gender === 'M').length
+  const myFemCount = myMembers.filter(m => m.gender === 'F').length
+  const jathedar = members.find(m => m.is_jathedar)
+  const effectiveQuota = user?.centre === ownerCentre ? myQuota : mySubQuota
+  const remainingQuota = effectiveQuota > 0 ? effectiveQuota - myMembers.length : null
+  const allSectionsReady = sections.length > 0 && sections.every(s => s.is_ready)
 
-  const vehicleNameLabel   = vehicleType === 'Train' ? 'Train Name'   : 'Driver Name'
-  const vehicleMobileLabel = vehicleType === 'Train' ? 'Train Time'   : 'Driver Mobile'
-  const vehicleIcon        = vehicleType === 'Train' ? '🚂'           : '🚌'
+  const vehicleNameLabel = vehicleType === 'Train' ? 'Train Name' : 'Driver Name'
+  const vehicleMobileLabel = vehicleType === 'Train' ? 'Train Time' : 'Driver Mobile'
+  const vehicleIcon = vehicleType === 'Train' ? '🚂' : '🚌'
 
   useEffect(() => { if (user) init() }, [user, id, scheduleIdParam])
 
@@ -179,7 +179,7 @@ export default function NRFormPage() {
   }, [searchQuery, searchTab, doSearch])
 
   const addMember = (r: SewadarResult | SangatResult) => {
-    const isSew     = 'badge_number' in r
+    const isSew = 'badge_number' in r
     const displayId = isSew ? (r as SewadarResult).badge_number : (r as SangatResult).sangat_id
     if (members.find(m => m.display_id === displayId)) return
     setMembers(prev => [...prev, {
@@ -215,8 +215,8 @@ export default function NRFormPage() {
   // Save NR (owner creates/updates header + all members)
   const saveNR = async (andSubmit = false) => {
     if (!user || !schedule) return
-    if (members.length === 0)  { setError('Add at least one member'); return }
-    if (isOwner && !jathedar)  { setError('Set a Jathedar before submitting (tap ★ on a member)'); return }
+    if (members.length === 0) { setError('Add at least one member'); return }
+    if (isOwner && !jathedar) { setError('Set a Jathedar before submitting (tap ★ on a member)'); return }
     if (andSubmit) {
       const notReady = sections.filter(s => !s.is_ready && s.centre !== ownerCentre)
       if (notReady.length > 0) {
@@ -231,19 +231,19 @@ export default function NRFormPage() {
       let currentNRId = nrId
 
       const payload: Record<string, unknown> = {
-        centre:           ownerCentre,
+        centre: ownerCentre,
         sewa_schedule_id: schedule.id,
-        jatha_name:       schedule.jatha_name,
-        schedule_dates:   `${schedule.from_date} to ${schedule.to_date}`,
-        jathedar_badge:   jathedar?.badge_number ?? null,
-        jathedar_name:    jathedar?.name ?? null,
-        jathedar_phone:   jathedar?.mobile ?? null,
-        vehicle_type:     vehicleType || null,
-        driver_name:      driverName || null,
-        driver_mobile:    driverMobile || null,
-        is_sub_centre:    false,
-        parent_centre:    ownerCentre,
-        status:           andSubmit ? 'submitted' : 'draft',
+        jatha_name: schedule.jatha_name,
+        schedule_dates: `${schedule.from_date} to ${schedule.to_date}`,
+        jathedar_badge: jathedar?.badge_number ?? null,
+        jathedar_name: jathedar?.name ?? null,
+        jathedar_phone: jathedar?.mobile ?? null,
+        vehicle_type: vehicleType || null,
+        driver_name: driverName || null,
+        driver_mobile: driverMobile || null,
+        is_sub_centre: false,
+        parent_centre: ownerCentre,
+        status: andSubmit ? 'submitted' : 'draft',
         ...(andSubmit ? { submitted_at: new Date().toISOString() } : {}),
       }
 
@@ -262,29 +262,29 @@ export default function NRFormPage() {
       if (sorted.length > 0) {
         const { error: me } = await supabase.from('nr_members').insert(
           sorted.map((m, idx) => ({
-            nominal_role_id:     currentNRId,
-            serial_no:           idx + 1,
-            display_id:          m.display_id,
-            member_type:         m.member_type,
-            sewadar_id:          m.sewadar_id ?? null,
-            sangat_id:           m.sangat_id ?? null,
-            name:                m.name,
-            father_name:         m.father_name ?? null,
-            gender:              m.gender,
-            age:                 m.age ?? null,
-            address:             m.address ?? null,
-            mobile:              m.mobile ?? null,
-            department:          m.department ?? null,
-            is_jathedar:         m.is_jathedar,
+            nominal_role_id: currentNRId,
+            serial_no: idx + 1,
+            display_id: m.display_id,
+            member_type: m.member_type,
+            sewadar_id: m.sewadar_id ?? null,
+            sangat_id: m.sangat_id ?? null,
+            name: m.name,
+            father_name: m.father_name ?? null,
+            gender: m.gender,
+            age: m.age ?? null,
+            address: m.address ?? null,
+            mobile: m.mobile ?? null,
+            department: m.department ?? null,
+            is_jathedar: m.is_jathedar,
             contributing_centre: m.contributing_centre,
-            centre:              m.contributing_centre,
+            centre: m.contributing_centre,
           }))
         )
         if (me) throw me
       }
 
       // Upsert owner's section status
-      await upsertMySection(currentNRId, false)
+      if (currentNRId) await upsertMySection(currentNRId, false)
 
       if (andSubmit) setNRStatus('submitted')
       navigate(`/nominal-roles/${currentNRId}`)
@@ -307,22 +307,22 @@ export default function NRFormPage() {
       if (myMems.length > 0) {
         const { error: ie } = await supabase.from('nr_members').insert(
           myMems.map((m, idx) => ({
-            nominal_role_id:     nrId,
-            serial_no:           idx + 1,
-            display_id:          m.display_id,
-            member_type:         m.member_type,
-            sewadar_id:          m.sewadar_id ?? null,
-            sangat_id:           m.sangat_id ?? null,
-            name:                m.name,
-            father_name:         m.father_name ?? null,
-            gender:              m.gender,
-            age:                 m.age ?? null,
-            address:             m.address ?? null,
-            mobile:              m.mobile ?? null,
-            department:          m.department ?? null,
-            is_jathedar:         false,
+            nominal_role_id: nrId,
+            serial_no: idx + 1,
+            display_id: m.display_id,
+            member_type: m.member_type,
+            sewadar_id: m.sewadar_id ?? null,
+            sangat_id: m.sangat_id ?? null,
+            name: m.name,
+            father_name: m.father_name ?? null,
+            gender: m.gender,
+            age: m.age ?? null,
+            address: m.address ?? null,
+            mobile: m.mobile ?? null,
+            department: m.department ?? null,
+            is_jathedar: false,
             contributing_centre: user.centre,
-            centre:              user.centre,
+            centre: user.centre,
           }))
         )
         if (ie) throw ie
@@ -376,7 +376,7 @@ export default function NRFormPage() {
     setMarkingReady(true)
     try {
       await saveMySection()
-      await upsertMySection(nrId, true)
+      if (nrId) await upsertMySection(nrId, true)
     } catch (err: any) {
       setError(err.message ?? 'Failed')
     } finally { setMarkingReady(false) }
@@ -384,7 +384,7 @@ export default function NRFormPage() {
 
   const unmarkReady = async () => {
     if (!user || !nrId) return
-    await upsertMySection(nrId, false)
+    if (nrId) await upsertMySection(nrId, false)
   }
 
   // Sort: jathedar first, then by centre (owner first, then sub-centres alphabetically),
@@ -396,8 +396,8 @@ export default function NRFormPage() {
     const sorted: NRMember[] = []
     for (const centre of centreOrder) {
       const cm = rest.filter(m => m.contributing_centre === centre)
-      const males   = cm.filter(m => m.gender === 'M').sort((a,b) => a.name.localeCompare(b.name))
-      const females = cm.filter(m => m.gender === 'F').sort((a,b) => a.name.localeCompare(b.name))
+      const males = cm.filter(m => m.gender === 'M').sort((a, b) => a.name.localeCompare(b.name))
+      const females = cm.filter(m => m.gender === 'F').sort((a, b) => a.name.localeCompare(b.name))
       sorted.push(...males, ...females)
     }
     return [...jath, ...sorted]
@@ -405,7 +405,7 @@ export default function NRFormPage() {
 
   if (loading) return (
     <div className="max-w-2xl mx-auto space-y-4">
-      {[...Array(3)].map((_,i) => <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />)}
+      {[...Array(3)].map((_, i) => <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />)}
     </div>
   )
 
@@ -436,10 +436,10 @@ export default function NRFormPage() {
         </div>
         <Badge variant={
           nrStatus === 'approved' || nrStatus === 'issued' ? 'green' :
-          nrStatus === 'submitted' ? 'navy' :
-          nrStatus === 'rejected' ? 'red' : 'gray'
+            nrStatus === 'submitted' ? 'navy' :
+              nrStatus === 'rejected' ? 'red' : 'gray'
         } className="text-[10px] flex-shrink-0">
-          {nrStatus.replace(/_/g,' ').toUpperCase()}
+          {nrStatus.replace(/_/g, ' ').toUpperCase()}
         </Badge>
       </div>
 
@@ -448,9 +448,9 @@ export default function NRFormPage() {
         <p className="text-xs font-semibold text-maroon-700">{schedule.jatha_name}</p>
         <p className="text-[10px] text-maroon-500 mt-0.5">
           {schedule.destination} · {schedule.department} ·{' '}
-          {new Date(schedule.from_date).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
+          {new Date(schedule.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
           {' – '}
-          {new Date(schedule.to_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+          {new Date(schedule.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
         </p>
       </div>
 
@@ -540,16 +540,14 @@ export default function NRFormPage() {
                   <p className="text-lg font-bold text-navy-600">{myMembers.length}</p>
                   <p className="text-[10px] text-slate-500">Added</p>
                 </div>
-                <div className={`rounded-xl p-2.5 ${
-                  remainingQuota === null ? 'bg-slate-50' :
-                  remainingQuota < 0 ? 'bg-red-50' :
-                  remainingQuota === 0 ? 'bg-green-50' : 'bg-amber-50'
-                }`}>
-                  <p className={`text-lg font-bold ${
-                    remainingQuota === null ? 'text-slate-400' :
-                    remainingQuota < 0 ? 'text-red-600' :
-                    remainingQuota === 0 ? 'text-green-600' : 'text-amber-600'
-                  }`}>{remainingQuota === null ? '—' : Math.abs(remainingQuota)}</p>
+                <div className={`rounded-xl p-2.5 ${remainingQuota === null ? 'bg-slate-50' :
+                    remainingQuota < 0 ? 'bg-red-50' :
+                      remainingQuota === 0 ? 'bg-green-50' : 'bg-amber-50'
+                  }`}>
+                  <p className={`text-lg font-bold ${remainingQuota === null ? 'text-slate-400' :
+                      remainingQuota < 0 ? 'text-red-600' :
+                        remainingQuota === 0 ? 'text-green-600' : 'text-amber-600'
+                    }`}>{remainingQuota === null ? '—' : Math.abs(remainingQuota)}</p>
                   <p className="text-[10px] text-slate-500">
                     {remainingQuota === null ? '' : remainingQuota < 0 ? 'Over' : remainingQuota === 0 ? 'Full ✓' : 'Left'}
                   </p>
@@ -627,7 +625,7 @@ export default function NRFormPage() {
             {canAddMembers && (
               <div className="p-4 border-b border-slate-100 space-y-3">
                 <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
-                  {(['sewadar','sangat'] as const).map(t => (
+                  {(['sewadar', 'sangat'] as const).map(t => (
                     <button key={t} onClick={() => { setSearchTab(t); setSearchQuery(''); setSearchRes([]) }}
                       className={['flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-all touch-manipulation',
                         searchTab === t ? 'bg-white text-maroon-700 shadow-sm' : 'text-slate-500'].join(' ')}>
@@ -669,37 +667,37 @@ export default function NRFormPage() {
               <div className="py-8 text-center text-sm text-slate-400">No members added yet</div>
             ) : (
               <div className="divide-y divide-slate-50">
-                {[...myMembers.filter(m=>m.gender==='M').sort((a,b)=>a.name.localeCompare(b.name)),
-                   ...myMembers.filter(m=>m.gender==='F').sort((a,b)=>a.name.localeCompare(b.name))]
+                {[...myMembers.filter(m => m.gender === 'M').sort((a, b) => a.name.localeCompare(b.name)),
+                ...myMembers.filter(m => m.gender === 'F').sort((a, b) => a.name.localeCompare(b.name))]
                   .map((m, idx) => (
-                  <div key={m.display_id} className={`flex items-center gap-3 px-4 py-3 ${m.is_jathedar ? 'bg-amber-50/40':''}`}>
-                    <span className="text-[10px] text-slate-300 w-5 text-right flex-shrink-0">{idx+1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium text-slate-800 truncate">{m.name}</p>
-                        <Badge variant={m.gender==='M'?'navy':'maroon'} className="text-[9px] flex-shrink-0">{m.gender}</Badge>
-                        {m.is_jathedar && <Badge variant="gold" className="text-[9px] flex-shrink-0">★</Badge>}
+                    <div key={m.display_id} className={`flex items-center gap-3 px-4 py-3 ${m.is_jathedar ? 'bg-amber-50/40' : ''}`}>
+                      <span className="text-[10px] text-slate-300 w-5 text-right flex-shrink-0">{idx + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-slate-800 truncate">{m.name}</p>
+                          <Badge variant={m.gender === 'M' ? 'navy' : 'maroon'} className="text-[9px] flex-shrink-0">{m.gender}</Badge>
+                          {m.is_jathedar && <Badge variant="gold" className="text-[9px] flex-shrink-0">★</Badge>}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-mono">{m.display_id}</p>
+                        <p className="text-[10px] text-slate-400">{m.father_name ?? '—'} · Age {m.age ?? '—'}</p>
                       </div>
-                      <p className="text-[10px] text-slate-400 font-mono">{m.display_id}</p>
-                      <p className="text-[10px] text-slate-400">{m.father_name ?? '—'} · Age {m.age ?? '—'}</p>
-                    </div>
-                    {canAddMembers && (
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {isOwner && (
-                          <button onClick={() => m.is_jathedar ? clearJathedar() : setAsJathedar(m.display_id)}
-                            className={['p-1.5 rounded-lg transition-colors touch-manipulation',
-                              m.is_jathedar ? 'text-amber-500 bg-amber-100' : 'text-slate-300 hover:text-amber-500'].join(' ')}>
-                            <Star size={13} className={m.is_jathedar ? 'fill-amber-400':''} />
+                      {canAddMembers && (
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {isOwner && (
+                            <button onClick={() => m.is_jathedar ? clearJathedar() : setAsJathedar(m.display_id)}
+                              className={['p-1.5 rounded-lg transition-colors touch-manipulation',
+                                m.is_jathedar ? 'text-amber-500 bg-amber-100' : 'text-slate-300 hover:text-amber-500'].join(' ')}>
+                              <Star size={13} className={m.is_jathedar ? 'fill-amber-400' : ''} />
+                            </button>
+                          )}
+                          <button onClick={() => removeMember(m.display_id)}
+                            className="p-1.5 text-slate-300 hover:text-red-500 touch-manipulation rounded-lg">
+                            <Trash2 size={13} />
                           </button>
-                        )}
-                        <button onClick={() => removeMember(m.display_id)}
-                          className="p-1.5 text-slate-300 hover:text-red-500 touch-manipulation rounded-lg">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
               </div>
             )}
             {myMembers.length > 0 && (
@@ -723,7 +721,7 @@ export default function NRFormPage() {
           </div>
           {sortAllMembers().map((m, idx) => {
             const showCentreHeader = idx === 0 ||
-              sortAllMembers()[idx-1].contributing_centre !== m.contributing_centre
+              sortAllMembers()[idx - 1].contributing_centre !== m.contributing_centre
             const centreMembers = members.filter(x => x.contributing_centre === m.contributing_centre)
             const sec = sections.find(s => s.centre === m.contributing_centre)
             return (
@@ -743,12 +741,12 @@ export default function NRFormPage() {
                     </div>
                   </div>
                 )}
-                <div className={`flex items-center gap-3 px-4 py-3 border-b border-slate-50 ${m.is_jathedar ? 'bg-amber-50/40':''}`}>
-                  <span className="text-[10px] text-slate-300 w-5 text-right flex-shrink-0">{idx+1}</span>
+                <div className={`flex items-center gap-3 px-4 py-3 border-b border-slate-50 ${m.is_jathedar ? 'bg-amber-50/40' : ''}`}>
+                  <span className="text-[10px] text-slate-300 w-5 text-right flex-shrink-0">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium text-slate-800 truncate">{m.name}</p>
-                      <Badge variant={m.gender==='M'?'navy':'maroon'} className="text-[9px] flex-shrink-0">{m.gender}</Badge>
+                      <Badge variant={m.gender === 'M' ? 'navy' : 'maroon'} className="text-[9px] flex-shrink-0">{m.gender}</Badge>
                       {m.is_jathedar && <Badge variant="gold" className="text-[9px] flex-shrink-0">★ Jathedar</Badge>}
                     </div>
                     <p className="text-[10px] text-slate-400 font-mono">{m.display_id}</p>
@@ -758,7 +756,7 @@ export default function NRFormPage() {
                     <button onClick={() => m.is_jathedar ? clearJathedar() : setAsJathedar(m.display_id)}
                       className={['p-1.5 rounded-lg touch-manipulation',
                         m.is_jathedar ? 'text-amber-500 bg-amber-100' : 'text-slate-300 hover:text-amber-500'].join(' ')}>
-                      <Star size={13} className={m.is_jathedar ? 'fill-amber-400':''} />
+                      <Star size={13} className={m.is_jathedar ? 'fill-amber-400' : ''} />
                     </button>
                   )}
                 </div>
@@ -780,7 +778,7 @@ export default function NRFormPage() {
             <div className="px-4 py-3 border-b border-slate-100">
               <h3 className="text-sm font-semibold text-slate-700">Section Status</h3>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                {sections.filter(s=>s.is_ready).length} of {sections.length} sections ready
+                {sections.filter(s => s.is_ready).length} of {sections.length} sections ready
               </p>
             </div>
             {sections.length === 0 ? (
@@ -789,29 +787,29 @@ export default function NRFormPage() {
               </div>
             ) : (
               <div className="divide-y divide-slate-50">
-                {[ownerCentre, ...sections.map(s=>s.centre).filter(c=>c!==ownerCentre).sort()]
-                  .filter(c => sections.some(s=>s.centre===c))
+                {[ownerCentre, ...sections.map(s => s.centre).filter(c => c !== ownerCentre).sort()]
+                  .filter(c => sections.some(s => s.centre === c))
                   .map(centre => {
-                  const s = sections.find(s=>s.centre===centre)!
-                  return (
-                    <div key={centre} className="flex items-center gap-3 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-slate-700">{centre}</p>
-                          {centre === ownerCentre && <Badge variant="maroon" className="text-[9px]">Owner</Badge>}
+                    const s = sections.find(s => s.centre === centre)!
+                    return (
+                      <div key={centre} className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-700">{centre}</p>
+                            {centre === ownerCentre && <Badge variant="maroon" className="text-[9px]">Owner</Badge>}
+                          </div>
+                          <div className="flex gap-3 mt-0.5">
+                            <span className="text-[10px] text-slate-400">{s.member_count} members</span>
+                            {s.srs_id && <span className="text-[10px] font-mono text-slate-400">SRS: {s.srs_id}</span>}
+                          </div>
                         </div>
-                        <div className="flex gap-3 mt-0.5">
-                          <span className="text-[10px] text-slate-400">{s.member_count} members</span>
-                          {s.srs_id && <span className="text-[10px] font-mono text-slate-400">SRS: {s.srs_id}</span>}
-                        </div>
+                        {s.is_ready
+                          ? <Badge variant="green" className="text-[10px] flex items-center gap-1"><Check size={10} />Ready</Badge>
+                          : <Badge variant="gray" className="text-[10px]">Pending</Badge>
+                        }
                       </div>
-                      {s.is_ready
-                        ? <Badge variant="green" className="text-[10px] flex items-center gap-1"><Check size={10}/>Ready</Badge>
-                        : <Badge variant="gray" className="text-[10px]">Pending</Badge>
-                      }
-                    </div>
-                  )
-                })}
+                    )
+                  })}
               </div>
             )}
           </div>
@@ -845,13 +843,13 @@ export default function NRFormPage() {
         <div className="grid grid-cols-2 gap-3">
           <button onClick={saveMySection} disabled={saving || iAmReady}
             className="py-3.5 border-2 border-maroon-200 rounded-xl text-sm font-semibold text-maroon-700 active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving ? <><span className="w-4 h-4 border-2 border-maroon-300 border-t-maroon-600 rounded-full animate-spin" />Saving...</> : <><Save size={15}/>Save</>}
+            {saving ? <><span className="w-4 h-4 border-2 border-maroon-300 border-t-maroon-600 rounded-full animate-spin" />Saving...</> : <><Save size={15} />Save</>}
           </button>
           <button onClick={iAmReady ? unmarkReady : markReady} disabled={markingReady}
             className={['py-3.5 rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2',
               iAmReady ? 'border-2 border-green-200 text-green-700' : 'bg-green-600 text-white'].join(' ')}>
             {markingReady ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> :
-             iAmReady ? <><CheckCircle size={15}/>Marked Ready</> : <><Check size={15}/>Mark Ready</>}
+              iAmReady ? <><CheckCircle size={15} />Marked Ready</> : <><Check size={15} />Mark Ready</>}
           </button>
         </div>
       )}
@@ -862,16 +860,16 @@ export default function NRFormPage() {
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => saveNR(false)} disabled={saving}
               className="py-3.5 border-2 border-maroon-200 rounded-xl text-sm font-semibold text-maroon-700 active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
-              {saving ? <><span className="w-4 h-4 border-2 border-maroon-300 border-t-maroon-600 rounded-full animate-spin"/>Saving...</> : <><Save size={15}/>Save Draft</>}
+              {saving ? <><span className="w-4 h-4 border-2 border-maroon-300 border-t-maroon-600 rounded-full animate-spin" />Saving...</> : <><Save size={15} />Save Draft</>}
             </button>
             <button onClick={() => saveNR(true)} disabled={saving}
               className="py-3.5 bg-maroon-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
-              <Send size={15}/> Submit to HQ
+              <Send size={15} /> Submit to HQ
             </button>
           </div>
           {!allSectionsReady && sections.length > 0 && (
             <p className="text-center text-[10px] text-amber-600">
-              ⚠ {sections.filter(s=>!s.is_ready).length} section(s) not yet marked ready
+              ⚠ {sections.filter(s => !s.is_ready).length} section(s) not yet marked ready
             </p>
           )}
         </>
