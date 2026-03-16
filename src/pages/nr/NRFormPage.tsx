@@ -59,26 +59,26 @@ export default function NRFormPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  const [schedule,      setSchedule]      = useState<Schedule | null>(null)
-  const [nrId,          setNRId]          = useState<number | null>(null)
-  const [nrStatus,      setNRStatus]      = useState('draft')
-  const [ownerCentre,   setOwnerCentre]   = useState('')
-  const [myQuota,       setMyQuota]       = useState(0)
-  const [mySubQuota,    setMySubQuota]    = useState(0)
-  const [vehicleType,   setVehicleType]   = useState('')
-  const [driverName,    setDriverName]    = useState('')
-  const [driverMobile,  setDriverMobile]  = useState('')
-  const [sections,      setSections]      = useState<SectionStatus[]>([])
-  const [members,       setMembers]       = useState<NRMember[]>([])
-  const [loading,       setLoading]       = useState(true)
-  const [saving,        setSaving]        = useState(false)
-  const [markingReady,  setMarkingReady]  = useState(false)
-  const [error,         setError]         = useState('')
-  const [activeTab,     setActiveTab]     = useState<'my-section' | 'all' | 'summary'>('my-section')
-  const [searchTab,     setSearchTab]     = useState<'sewadar' | 'sangat'>('sewadar')
-  const [searchQuery,   setSearchQuery]   = useState('')
-  const [searchRes,     setSearchRes]     = useState<(SewadarResult | SangatResult)[]>([])
-  const [searching,     setSearching]     = useState(false)
+  const [schedule, setSchedule] = useState<Schedule | null>(null)
+  const [nrId, setNRId] = useState<number | null>(null)
+  const [nrStatus, setNRStatus] = useState('draft')
+  const [ownerCentre, setOwnerCentre] = useState('')
+  const [myQuota, setMyQuota] = useState(0)
+  const [mySubQuota, setMySubQuota] = useState(0)
+  const [vehicleType, setVehicleType] = useState('')
+  const [driverName, setDriverName] = useState('')
+  const [driverMobile, setDriverMobile] = useState('')
+  const [sections, setSections] = useState<SectionStatus[]>([])
+  const [members, setMembers] = useState<NRMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [markingReady, setMarkingReady] = useState(false)
+  const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState<'my-section' | 'all' | 'summary'>('my-section')
+  const [searchTab, setSearchTab] = useState<'sewadar' | 'sangat'>('sewadar')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchRes, setSearchRes] = useState<(SewadarResult | SangatResult)[]>([])
+  const [searching, setSearching] = useState(false)
 
   const isASO = user?.role === 'aso'
   const isOwner = isASO || user?.centre === ownerCentre
@@ -90,17 +90,17 @@ export default function NRFormPage() {
 
   const myMembers = members.filter(m => m.contributing_centre === user?.centre)
   const allMaleCount = members.filter(m => m.gender === 'M').length
-  const allFemCount  = members.filter(m => m.gender === 'F').length
-  const myMaleCount  = myMembers.filter(m => m.gender === 'M').length
-  const myFemCount   = myMembers.filter(m => m.gender === 'F').length
-  const jathedar     = members.find(m => m.is_jathedar)
-  const effectiveQuota  = user?.centre === ownerCentre ? myQuota : mySubQuota
-  const remainingQuota  = effectiveQuota > 0 ? effectiveQuota - myMembers.length : null
+  const allFemCount = members.filter(m => m.gender === 'F').length
+  const myMaleCount = myMembers.filter(m => m.gender === 'M').length
+  const myFemCount = myMembers.filter(m => m.gender === 'F').length
+  const jathedar = members.find(m => m.is_jathedar)
+  const effectiveQuota = user?.centre === ownerCentre ? myQuota : mySubQuota
+  const remainingQuota = effectiveQuota > 0 ? effectiveQuota - myMembers.length : null
   const allSectionsReady = sections.length > 0 && sections.every(s => s.is_ready)
 
-  const vehicleNameLabel   = vehicleType === 'Train' ? 'Train Name' : 'Driver Name'
+  const vehicleNameLabel = vehicleType === 'Train' ? 'Train Name' : 'Driver Name'
   const vehicleMobileLabel = vehicleType === 'Train' ? 'Train Time' : 'Driver Mobile'
-  const vehicleIcon        = vehicleType === 'Train' ? '🚂' : '🚌'
+  const vehicleIcon = vehicleType === 'Train' ? '🚂' : '🚌'
 
   useEffect(() => { if (user) init() }, [user, id, scheduleIdParam])
 
@@ -131,12 +131,12 @@ export default function NRFormPage() {
             // RLS may block sub-centres from reading sewa_schedule directly
             const dates = (nr.schedule_dates ?? '').split(' to ')
             setSchedule({
-              id:          nr.sewa_schedule_id,
-              jatha_name:  nr.jatha_name ?? 'Jatha',
+              id: nr.sewa_schedule_id,
+              jatha_name: nr.jatha_name ?? 'Jatha',
               destination: '',
-              department:  '',
-              from_date:   dates[0]?.trim() ?? '',
-              to_date:     dates[1]?.trim() ?? '',
+              department: '',
+              from_date: dates[0]?.trim() ?? '',
+              to_date: dates[1]?.trim() ?? '',
             })
           }
 
@@ -182,8 +182,8 @@ export default function NRFormPage() {
         // FIX: a root/standalone centre has parent_centre = null or parent_centre = centre_name
         const parentCentre = centreInfo?.parent_centre
         const isSub = parentCentre !== null &&
-                      parentCentre !== undefined &&
-                      parentCentre !== user.centre
+          parentCentre !== undefined &&
+          parentCentre !== user.centre
         const ownerC = isSub ? parentCentre! : user.centre
 
         // If NR already exists for owner, redirect to it
@@ -275,18 +275,18 @@ export default function NRFormPage() {
       : null
 
     setMembers(prev => [...prev, {
-      display_id:          displayId,
-      member_type:         isSew ? 'sewadar' : 'sangat',
-      name:                r.name,
-      father_name:         r.father_name,
-      gender:              r.gender,
-      age:                 r.age,
-      address:             r.address,
-      mobile:              r.mobile,
-      department:          isSew ? (r as SewadarResult).department : null,
-      is_jathedar:         false,
+      display_id: displayId,
+      member_type: isSew ? 'sewadar' : 'sangat',
+      name: r.name,
+      father_name: r.father_name,
+      gender: r.gender,
+      age: r.age,
+      address: r.address,
+      mobile: r.mobile,
+      department: isSew ? (r as SewadarResult).department : null,
+      is_jathedar: false,
       contributing_centre: user?.centre ?? '',
-      aadhaar_masked:      aadhaarMasked,
+      aadhaar_masked: aadhaarMasked,
       ...(isSew
         ? { sewadar_id: r.id, badge_number: (r as SewadarResult).badge_number }
         : { sangat_id: r.id }
@@ -327,8 +327,8 @@ export default function NRFormPage() {
   // Sort: jathedar first, then by centre (owner first, sub-centres alphabetically),
   // within each centre: males A-Z then females A-Z
   const sortAllMembers = (): NRMember[] => {
-    const jath  = members.filter(m => m.is_jathedar)
-    const rest  = members.filter(m => !m.is_jathedar)
+    const jath = members.filter(m => m.is_jathedar)
+    const rest = members.filter(m => !m.is_jathedar)
     const subCentres = sections
       .map(s => s.centre)
       .filter(c => c !== ownerCentre)
@@ -336,8 +336,8 @@ export default function NRFormPage() {
     const centreOrder = [ownerCentre, ...subCentres]
     const sorted: NRMember[] = []
     for (const centre of centreOrder) {
-      const cm      = rest.filter(m => m.contributing_centre === centre)
-      const males   = cm.filter(m => m.gender === 'M').sort((a, b) => a.name.localeCompare(b.name))
+      const cm = rest.filter(m => m.contributing_centre === centre)
+      const males = cm.filter(m => m.gender === 'M').sort((a, b) => a.name.localeCompare(b.name))
       const females = cm.filter(m => m.gender === 'F').sort((a, b) => a.name.localeCompare(b.name))
       sorted.push(...males, ...females)
     }
@@ -368,19 +368,19 @@ export default function NRFormPage() {
       let currentNRId = nrId
 
       const payload: Record<string, unknown> = {
-        centre:           ownerCentre,
+        centre: ownerCentre,
         sewa_schedule_id: schedule.id,
-        jatha_name:       schedule.jatha_name,
-        schedule_dates:   `${schedule.from_date} to ${schedule.to_date}`,
-        jathedar_badge:   jathedar?.badge_number ?? null,
-        jathedar_name:    jathedar?.name ?? null,
-        jathedar_phone:   jathedar?.mobile ?? null,
-        vehicle_type:     vehicleType || null,
-        driver_name:      driverName || null,
-        driver_mobile:    driverMobile || null,
-        is_sub_centre:    false,
-        parent_centre:    ownerCentre,
-        status:           andSubmit ? 'submitted' : 'draft',
+        jatha_name: schedule.jatha_name,
+        schedule_dates: `${schedule.from_date} to ${schedule.to_date}`,
+        jathedar_badge: jathedar?.badge_number ?? null,
+        jathedar_name: jathedar?.name ?? null,
+        jathedar_phone: jathedar?.mobile ?? null,
+        vehicle_type: vehicleType || null,
+        driver_name: driverName || null,
+        driver_mobile: driverMobile || null,
+        is_sub_centre: false,
+        parent_centre: ownerCentre,
+        status: andSubmit ? 'submitted' : 'draft',
         ...(andSubmit ? { submitted_at: new Date().toISOString() } : {}),
       }
 
@@ -408,28 +408,29 @@ export default function NRFormPage() {
       if (sorted.length > 0) {
         const { error: me } = await supabase.from('nr_members').insert(
           sorted.map((m, idx) => ({
-            nominal_role_id:     currentNRId,
-            serial_no:           idx + 1,
-            display_id:          m.display_id,
-            member_type:         m.member_type,
-            sewadar_id:          m.sewadar_id ?? null,
-            sangat_id:           m.sangat_id ?? null,
-            name:                m.name,
-            father_name:         m.father_name ?? null,
-            gender:              m.gender,
-            age:                 m.age ?? null,
-            address:             m.address ?? null,
-            mobile:              m.mobile ?? null,
-            department:          m.department ?? null,
-            is_jathedar:         m.is_jathedar,
+            nominal_role_id: currentNRId,
+            serial_no: idx + 1,
+            display_id: m.display_id,
+            member_type: m.member_type,
+            sewadar_id: m.sewadar_id ?? null,
+            sangat_id: m.sangat_id ?? null,
+            name: m.name,
+            father_name: m.father_name ?? null,
+            gender: m.gender,
+            age: m.age ?? null,
+            address: m.address ?? null,
+            mobile: m.mobile ?? null,
+            department: m.department ?? null,
+            is_jathedar: m.is_jathedar,
             contributing_centre: m.contributing_centre,
-            centre:              m.contributing_centre,
-            aadhaar_masked:      m.aadhaar_masked ?? null,
+            centre: m.contributing_centre,
+            aadhaar_masked: m.aadhaar_masked ?? null,
           }))
         )
         if (me) throw me
       }
 
+      if (!currentNRId) throw new Error('NR ID missing')
       await upsertMySection(currentNRId, andSubmit)
 
       // Store owner's SRS ID in nominal_roles for quick access
@@ -441,11 +442,11 @@ export default function NRFormPage() {
       // Log the action
       await supabase.from('logs').insert({
         user_badge: user.badge_number,
-        user_role:  user.role,
-        action:     andSubmit ? 'NR_SUBMITTED' : 'NR_SAVED',
+        user_role: user.role,
+        action: andSubmit ? 'NR_SUBMITTED' : 'NR_SAVED',
         table_name: 'nominal_roles',
-        record_id:  String(currentNRId),
-        details:    { member_count: sorted.length, centre: ownerCentre },
+        record_id: String(currentNRId),
+        details: { member_count: sorted.length, centre: ownerCentre },
       })
 
       if (andSubmit) setNRStatus('submitted')
@@ -478,23 +479,23 @@ export default function NRFormPage() {
 
         const { error: ie } = await supabase.from('nr_members').insert(
           myMembers.map((m, idx) => ({
-            nominal_role_id:     nrId,
-            serial_no:           otherMax + idx + 1,
-            display_id:          m.display_id,
-            member_type:         m.member_type,
-            sewadar_id:          m.sewadar_id ?? null,
-            sangat_id:           m.sangat_id ?? null,
-            name:                m.name,
-            father_name:         m.father_name ?? null,
-            gender:              m.gender,
-            age:                 m.age ?? null,
-            address:             m.address ?? null,
-            mobile:              m.mobile ?? null,
-            department:          m.department ?? null,
-            is_jathedar:         false,
+            nominal_role_id: nrId,
+            serial_no: otherMax + idx + 1,
+            display_id: m.display_id,
+            member_type: m.member_type,
+            sewadar_id: m.sewadar_id ?? null,
+            sangat_id: m.sangat_id ?? null,
+            name: m.name,
+            father_name: m.father_name ?? null,
+            gender: m.gender,
+            age: m.age ?? null,
+            address: m.address ?? null,
+            mobile: m.mobile ?? null,
+            department: m.department ?? null,
+            is_jathedar: false,
             contributing_centre: user.centre,
-            centre:              user.centre,
-            aadhaar_masked:      m.aadhaar_masked ?? null,
+            centre: user.centre,
+            aadhaar_masked: m.aadhaar_masked ?? null,
           }))
         )
         if (ie) throw ie
@@ -519,15 +520,15 @@ export default function NRFormPage() {
 
   const upsertMySection = async (nrRoleId: number, isReady: boolean) => {
     if (!user) return
-    const mySrs  = sections.find(s => s.centre === user.centre)?.srs_id ?? ''
+    const mySrs = sections.find(s => s.centre === user.centre)?.srs_id ?? ''
     const myCount = members.filter(m => m.contributing_centre === user.centre).length
     const existing = sections.find(s => s.centre === user.centre)
 
     const payload = {
-      srs_id:       mySrs || null,
-      is_ready:     isReady,
+      srs_id: mySrs || null,
+      is_ready: isReady,
       member_count: myCount,
-      updated_at:   new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       ...(isReady ? { ready_at: new Date().toISOString() } : {}),
     }
 
@@ -536,7 +537,7 @@ export default function NRFormPage() {
     } else {
       const { data } = await supabase.from('nr_section_status').insert({
         nominal_role_id: nrRoleId,
-        centre:          user.centre,
+        centre: user.centre,
         ...payload,
       }).select('id').single()
 
@@ -609,9 +610,9 @@ export default function NRFormPage() {
         </div>
         <Badge variant={
           nrStatus === 'approved' || nrStatus === 'issued' ? 'green' :
-          nrStatus === 'submitted' || nrStatus === 'submitted_to_centre' ? 'navy' :
-          nrStatus === 'centre_approved' ? 'gold' :
-          nrStatus === 'rejected' || nrStatus === 'centre_rejected' ? 'red' : 'gray'
+            nrStatus === 'submitted' || nrStatus === 'submitted_to_centre' ? 'navy' :
+              nrStatus === 'centre_approved' ? 'gold' :
+                nrStatus === 'rejected' || nrStatus === 'centre_rejected' ? 'red' : 'gray'
         } className="text-[10px] flex-shrink-0">
           {nrStatus.replace(/_/g, ' ').toUpperCase()}
         </Badge>
@@ -711,20 +712,18 @@ export default function NRFormPage() {
                   <p className="text-lg font-bold text-navy-600">{myMembers.length}</p>
                   <p className="text-[10px] text-slate-500">Added</p>
                 </div>
-                <div className={`rounded-xl p-2.5 ${
-                  remainingQuota === null ? 'bg-slate-50' :
-                  remainingQuota < 0 ? 'bg-red-50' :
-                  remainingQuota === 0 ? 'bg-green-50' : 'bg-amber-50'
-                }`}>
-                  <p className={`text-lg font-bold ${
-                    remainingQuota === null ? 'text-slate-400' :
-                    remainingQuota < 0 ? 'text-red-600' :
-                    remainingQuota === 0 ? 'text-green-600' : 'text-amber-600'
-                  }`}>{remainingQuota === null ? '—' : Math.abs(remainingQuota)}</p>
+                <div className={`rounded-xl p-2.5 ${remainingQuota === null ? 'bg-slate-50' :
+                    remainingQuota < 0 ? 'bg-red-50' :
+                      remainingQuota === 0 ? 'bg-green-50' : 'bg-amber-50'
+                  }`}>
+                  <p className={`text-lg font-bold ${remainingQuota === null ? 'text-slate-400' :
+                      remainingQuota < 0 ? 'text-red-600' :
+                        remainingQuota === 0 ? 'text-green-600' : 'text-amber-600'
+                    }`}>{remainingQuota === null ? '—' : Math.abs(remainingQuota)}</p>
                   <p className="text-[10px] text-slate-500">
                     {remainingQuota === null ? '' :
-                     remainingQuota < 0 ? 'Over' :
-                     remainingQuota === 0 ? 'Full ✓' : 'Left'}
+                      remainingQuota < 0 ? 'Over' :
+                        remainingQuota === 0 ? 'Full ✓' : 'Left'}
                   </p>
                 </div>
               </div>
@@ -817,7 +816,7 @@ export default function NRFormPage() {
                   <div className="border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
                     {searchRes.map(r => {
                       const isSew = 'badge_number' in r
-                      const dId   = isSew ? (r as SewadarResult).badge_number : (r as SangatResult).sangat_id
+                      const dId = isSew ? (r as SewadarResult).badge_number : (r as SangatResult).sangat_id
                       const already = !!members.find(m => m.display_id === dId)
                       return (
                         <button key={r.id} onClick={() => !already && addMember(r)} disabled={already}
@@ -876,7 +875,7 @@ export default function NRFormPage() {
                             title={m.member_type === 'sangat' ? 'Sangat members cannot be Jathedar' : 'Set as Jathedar'}
                             className={['p-1.5 rounded-lg transition-colors touch-manipulation',
                               m.member_type === 'sangat' ? 'text-slate-200 cursor-not-allowed' :
-                              m.is_jathedar ? 'text-amber-500 bg-amber-100' : 'text-slate-300 hover:text-amber-500'].join(' ')}>
+                                m.is_jathedar ? 'text-amber-500 bg-amber-100' : 'text-slate-300 hover:text-amber-500'].join(' ')}>
                             <Star size={13} className={m.is_jathedar ? 'fill-amber-400' : ''} />
                           </button>
                         )}
@@ -951,7 +950,7 @@ export default function NRFormPage() {
                       <button onClick={() => m.is_jathedar ? clearJathedar() : setAsJathedar(m.display_id)}
                         className={['p-1.5 rounded-lg touch-manipulation',
                           m.member_type === 'sangat' ? 'text-slate-200 cursor-not-allowed' :
-                          m.is_jathedar ? 'text-amber-500 bg-amber-100' : 'text-slate-300 hover:text-amber-500'].join(' ')}>
+                            m.is_jathedar ? 'text-amber-500 bg-amber-100' : 'text-slate-300 hover:text-amber-500'].join(' ')}>
                         <Star size={13} className={m.is_jathedar ? 'fill-amber-400' : ''} />
                       </button>
                     )}
