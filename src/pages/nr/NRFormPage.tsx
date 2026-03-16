@@ -108,10 +108,26 @@ export default function NRFormPage() {
           setDriverMobile(nr.driver_mobile ?? '')
 
           if (nr.sewa_schedule_id) {
+            // Try to load schedule — may fail for sub-centres due to RLS
             const { data: s } = await supabase.from('sewa_schedule')
               .select('id,jatha_name,destination,department,from_date,to_date')
               .eq('id', nr.sewa_schedule_id).single()
-            if (s) setSchedule(s as Schedule)
+
+            if (s) {
+              setSchedule(s as Schedule)
+            } else {
+              // Schedule not accessible via RLS — build minimal schedule from NR data
+              // so sub-centres can still add members
+              const dates = (nr.schedule_dates ?? '').split(' to ')
+              setSchedule({
+                id:          nr.sewa_schedule_id,
+                jatha_name:  nr.jatha_name ?? 'Jatha',
+                destination: '',
+                department:  '',
+                from_date:   dates[0]?.trim() ?? '',
+                to_date:     dates[1]?.trim() ?? '',
+              } as Schedule)
+            }
 
             const { data: sq } = await supabase.from('sewa_quota')
               .select('quota_count').eq('sewa_schedule_id', nr.sewa_schedule_id)
