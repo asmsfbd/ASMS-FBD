@@ -336,7 +336,16 @@ export default function NRFormPage() {
       }
 
       // Upsert owner's section status
-      if (currentNRId) await upsertMySection(currentNRId, false)
+      // On submit: mark owner's section as ready too
+      if (currentNRId) await upsertMySection(currentNRId, andSubmit)
+
+      // Store owner's SRS ID in nominal_roles.srs_id so ASO can see it on detail view
+      const ownerSrsId = sections.find(s => s.centre === ownerCentre)?.srs_id
+      if (ownerSrsId && currentNRId) {
+        await supabase.from('nominal_roles')
+          .update({ srs_id: ownerSrsId })
+          .eq('id', currentNRId)
+      }
 
       if (andSubmit) setNRStatus('submitted')
       navigate(`/nominal-roles/${currentNRId}`)

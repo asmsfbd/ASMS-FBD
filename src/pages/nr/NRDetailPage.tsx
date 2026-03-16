@@ -252,13 +252,16 @@ export default function NRDetailPage() {
             </p>
           </div>
 
-          {/* SRS ID: show owner's for owner/ASO, show my section SRS for sub-centre */}
+          {/* SRS ID: each centre sees their own section SRS ID */}
           <div>
             <p className="text-[10px] text-slate-400 uppercase tracking-wide">
-              {isSubContrib ? `SRS ID (${user?.centre})` : 'SRS ID'}
+              SRS ID {isSubContrib ? `(${user?.centre})` : `(${nr.centre})`}
             </p>
             <p className="font-mono font-semibold text-slate-800">
-              {isSubContrib ? (mySrsId ?? '—') : (nr.srs_id ?? '—')}
+              {isSubContrib
+                ? (mySrsId ?? '—')
+                : (sections.find(s => s.centre === nr.centre)?.srs_id ?? nr.srs_id ?? '—')
+              }
             </p>
           </div>
 
@@ -339,7 +342,7 @@ export default function NRDetailPage() {
                     {s.member_count} members{s.srs_id ? ` · SRS: ${s.srs_id}` : ''}
                   </p>
                 </div>
-                {s.is_ready
+                {s.is_ready || nr.status !== 'draft'
                   ? <Badge variant="green" className="text-[9px]">✓ Ready</Badge>
                   : <Badge variant="gray" className="text-[9px]">Pending</Badge>
                 }
