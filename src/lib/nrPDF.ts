@@ -1,7 +1,12 @@
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
+/**
+ * NR PDF — Official RSSB Faridabad Format
+ * Pure browser-native: jsPDF + jspdf-autotable
+ */
 
-/* ---------- Types ---------- */
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+
+/* ---------- TYPES ---------- */
 
 export interface NRForPDF {
   id: number
@@ -47,315 +52,383 @@ export interface GeneratePDFOptions {
   jathedar: MemberForPDF | null
 }
 
-/* ---------- Page constants ---------- */
+/* ---------- COLORS ---------- */
 
-const PW = 210
-const PH = 297
-const ML = 12
-const MR = 12
-const MT = 10
-const MB = 10
+const BLK: [number,number,number] = [0,0,0]
+const GRY: [number,number,number] = [200,200,200]
+const WHT: [number,number,number] = [255,255,255]
+const ALT: [number,number,number] = [247,247,247]
 
-const CW = PW - ML - MR
+/* ---------- PAGE ---------- */
 
-/* ---------- Column widths (Official proportions) ---------- */
+const PW=210
+const PH=297
+const ML=12
+const MR=12
+const MT=10
+const MB=10
+const CW=PW-ML-MR
 
-const COL = {
-  sno: 6,
-  badge: 25,
-  name: 28,
-  father: 24,
-  gender: 6,
-  age: 6,
-  address: 55,
-  centre: 36
+/* ---------- MEMBER TABLE WIDTHS (FIXED) ---------- */
+
+const C0 = 6
+const C1 = 26
+const C2 = 28
+const C3 = 24
+const C4 = 6
+const C5 = 6
+
+const C6a = 56
+const C7 = CW-(C0+C1+C2+C3+C4+C5+C6a)
+
+const COLS=[C0,C1,C2,C3,C4,C5,C6a,C7]
+
+/* ---------- HEADER WIDTHS ---------- */
+
+const HL1=28
+const HC1=4
+const HV1=CW/2-HL1-HC1
+
+const HL2=32
+const HC2=4
+const HV2=CW/2-HL2-HC2
+
+/* ---------- SIGNATURE WIDTHS ---------- */
+
+const SA=C0+C1
+const SB=C2+C3
+const SC=C4+C5+C6a*0.6
+const SE=C6a*0.4+C7
+
+/* ---------- HELPERS ---------- */
+
+function fd(d: string|null): string {
+  if (!d) return ''
+  try {
+    const dt = new Date(d)
+    return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`
+  } catch { return d }
 }
 
-/* ---------- Helpers ---------- */
-
-function formatDate(d: string | null) {
-  if (!d) return ""
-  const dt = new Date(d)
-
-  return `${String(dt.getDate()).padStart(2, "0")}-${String(
-    dt.getMonth() + 1
-  ).padStart(2, "0")}-${dt.getFullYear()}`
+function days(f:string|null,t:string|null): string {
+  if (!f||!t) return '1'
+  return String(Math.round((new Date(t).getTime()-new Date(f).getTime())/86400000)+1)
 }
 
-function today() {
-  return formatDate(new Date().toISOString())
+function td(): string {
+  const d=new Date()
+  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`
 }
 
-function days(f: string | null, t: string | null) {
-  if (!f || !t) return "1"
-  return String(
-    Math.round(
-      (new Date(t).getTime() - new Date(f).getTime()) / 86400000
-    ) + 1
-  )
-}
+/* ---------- SHEET ---------- */
 
-/* ---------- Header ---------- */
-
-function drawHeader(doc: jsPDF, nr: NRForPDF, title: string, jathedar: MemberForPDF | null) {
-
-  doc.setFont("helvetica", "normal")
-
-  doc.setFontSize(7)
-  doc.text("SCI/2020/84", PW - MR, MT + 3, { align: "right" })
-
-  doc.setFontSize(11)
-  doc.setFont("helvetica", "bold")
-  doc.text("SATSANG CENTRES IN INDIA", PW / 2, MT + 10, { align: "center" })
-
-  doc.setFontSize(9)
-  doc.text(`NOMINAL ROLL OF JATHA ${title}`, PW / 2, MT + 16, {
-    align: "center"
-  })
-
-  let y = MT + 24
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
-
-  const place = nr.centre.toUpperCase()
-
-  doc.text(`Name of Satsang Place : ${place}`, ML, y)
-  doc.text(`Area : FARIDABAD : ZONE: III`, ML + CW / 2, y)
-
-  y += 6
-
-  doc.text(
-    `Name of Jathedar : ${(jathedar?.name || "").toUpperCase()}`,
-    ML,
-    y
-  )
-
-  doc.text(
-    `Train Name & Time : ${nr.driver_name || ""}`,
-    ML + CW / 2,
-    y
-  )
-
-  y += 6
-
-  doc.text(`Mobile No : ${jathedar?.mobile || ""}`, ML, y)
-
-  doc.text(
-    `Type of Vehicle / Vehicle No : ${nr.vehicle_type || ""}`,
-    ML + CW / 2,
-    y
-  )
-
-  y += 6
-
-  doc.text(`Place of Sewa : ${nr.destination || "BEAS"}`, ML, y)
-
-  doc.text(
-    `Department : ${(nr.department || "").toUpperCase()}`,
-    ML + CW / 2,
-    y
-  )
-
-  return y + 6
-}
-
-/* ---------- Member Table ---------- */
-
-function drawTable(
+function sheet(
   doc: jsPDF,
   nr: NRForPDF,
-  members: MemberForPDF[],
-  gender: "M" | "F",
-  startY: number
-) {
+  sections: SectionForPDF[],
+  jathedar: MemberForPDF|null,
+  gf: 'M'|'F',
+  lbl: 'MALE'|'FEMALE',
+  first: boolean
+){
 
-  const rows = members.map((m, i) => [
+const secs = sections
+.map(s=>({...s,members:s.members.filter(m=>m.gender.toUpperCase()===gf)}))
+.filter(s=>s.members.length>0)
 
-    i + 1,
+if(!secs.length)return
+if(!first)doc.addPage()
 
-    m.display_id,
+const jath = secs.flatMap(s=>s.members).find(m=>m.is_jathedar) ?? jathedar
 
-    m.name,
+const place = sections.map(s=>s.centre).join(' | ').toUpperCase()
 
-    m.father_name || "—",
+const isT=(nr.vehicle_type??'').toUpperCase()==='TRAIN'
 
-    m.gender,
+const drvLbl=isT?'Train Name & Time':'Name of Driver & Mobile No'
 
-    m.age || "",
+const drvV=nr.driver_name
+?`${nr.driver_name}${nr.driver_mobile?' | '+nr.driver_mobile:''}`
+:''
 
-    `${m.address || ""}\n${m.mobile || ""}`,
+const jathName=(jath?.name??'').toUpperCase()
+const jathMob=jath?.mobile??''
 
-    `${m.contributing_centre}\n`
-  ])
+doc.setFontSize(7)
+doc.text('SCI/2020/84',PW-MR,MT+3,{align:'right'})
 
-  autoTable(doc, {
+let y=MT+6
 
-    startY,
+doc.setFontSize(11)
+doc.setFont('helvetica','bold')
+doc.text('SATSANG CENTRES IN INDIA',PW/2,y+5,{align:'center'})
 
-    theme: "grid",
+y+=7
 
-    styles: {
-      fontSize: 7,
-      cellPadding: 2,
-      lineWidth: 0.25
-    },
+doc.setFontSize(9)
+doc.text(`NOMINAL ROLL OF JATHA ${lbl}`,PW/2,y+4,{align:'center'})
 
-    head: [[
-      "Sno",
-      "Badge No.\nAadhar No.",
-      "Sewadar's Name",
-      "Father's Name",
-      "M/F",
-      "Age",
-      "Address & Phone No.",
-      "Centre / SRS ID"
-    ]],
+y+=8
 
-    body: rows,
+/* ---------- HEADER TABLE ---------- */
 
-    columnStyles: {
+autoTable(doc,{
+startY:y,
 
-      0: { cellWidth: COL.sno, halign: "center" },
+body:[
+['Name of Satsang Place',':',place,'Area : FARIDABAD',':','ZONE: III'],
+['Name of Jathedar',':',jathName,drvLbl,':',drvV],
+['Mobile No',':',jathMob,'Type of Vehicle / Vehicle No',':',nr.vehicle_type??''],
+['Place of Sewa',':',nr.destination??'BEAS','Department',':',(nr.department??'').toUpperCase()],
+],
 
-      1: { cellWidth: COL.badge },
+columnStyles:{
+0:{cellWidth:HL1},
+1:{cellWidth:HC1,halign:'center'},
+2:{cellWidth:HV1,fontStyle:'bold'},
+3:{cellWidth:HL2},
+4:{cellWidth:HC2,halign:'center'},
+5:{cellWidth:HV2,fontStyle:'bold'},
+},
 
-      2: { cellWidth: COL.name },
+theme:'plain',
 
-      3: { cellWidth: COL.father },
+styles:{
+fontSize:8,
+cellPadding:{top:2.5,bottom:2.5,left:3,right:2},
+valign:'middle',
+overflow:'linebreak'
+},
 
-      4: { cellWidth: COL.gender, halign: "center" },
+margin:{left:ML,right:MR},
+tableWidth:CW,
 
-      5: { cellWidth: COL.age, halign: "center" },
-
-      6: { cellWidth: COL.address },
-
-      7: { cellWidth: COL.centre }
-    }
-  })
-
-  const y = (doc as any).lastAutoTable.finalY + 6
-
-  drawTotals(doc, nr, members, gender, y)
-
-  return y
+didDrawCell:(d)=>{
+if(d.section==='body'&&(d.column.index===2||d.column.index===5)){
+doc.setDrawColor(...GRY)
+doc.setLineWidth(0.25)
+doc.line(d.cell.x,d.cell.y+d.cell.height,d.cell.x+d.cell.width,d.cell.y+d.cell.height)
+}
 }
 
-/* ---------- Totals ---------- */
+})
 
-function drawTotals(
-  doc: jsPDF,
-  nr: NRForPDF,
-  members: MemberForPDF[],
-  gender: "M" | "F",
-  y: number
-) {
+y=(doc as any).lastAutoTable.finalY+2
 
-  const male = members.filter(m => m.gender === "M").length
-  const female = members.filter(m => m.gender === "F").length
+/* ---------- MEMBERS ---------- */
 
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(8)
+const allM = secs.flatMap(s=>s.members.map(m=>({...m,_ctr:s.centre,_srs:s.srs_id??'—'})))
 
-  doc.text("TOTAL SEWADARS", ML + 40, y)
+const mc=allM.filter(m=>m.gender.toUpperCase()==='M').length
+const fc=allM.filter(m=>m.gender.toUpperCase()==='F').length
+const tot=nr.member_count??(mc+fc)
 
-  doc.text("M", ML + 90, y)
+const d5=days(nr.from_date,nr.to_date)
 
-  doc.text("F", ML + 100, y)
+const dataRows=allM.map((m,i)=>{
 
-  doc.setFont("helvetica", "normal")
+let age='—'
+try{if(m.age!=null)age=String(Math.floor(Number(m.age)))}catch{}
 
-  doc.text(String(male + female), ML + 90, y + 6)
+const addr=(m.address??'—')+(m.mobile?'\n'+m.mobile:'')
 
-  doc.text(String(male), ML + 90, y + 12)
+return[
+String(i+1),
+m.display_id,
+m.name,
+m.father_name??'—',
+m.gender,
+age,
+addr,
+`${m._ctr}\n${m._srs}`
+]
 
-  doc.text(String(female), ML + 100, y + 12)
+})
+
+const de=2+dataRows.length
+
+const body:any[]=[
+
+[`Sewa duration (No_Of_Days)   ${d5} Days`,'','',`Date ( From ) :  ${fd(nr.from_date)}`,'','',`Date ( To ) :  ${fd(nr.to_date)}`,''],
+
+['Sno','Badge No.\nAadhar No.',"Sewadar's\nName","Father's\nName",'M/F','Age','Address &\nPhone No.','Centre /\nSRS ID'],
+
+...dataRows,
+
+['','','TOTAL SEWADARS','','M','F',String(tot),''],
+
+['','','','',gf==='M'?String(mc):'',String(fc),'','']
+
+]
+
+autoTable(doc,{
+
+startY:y,
+body,
+
+columnStyles:{
+0:{cellWidth:COLS[0],halign:'center'},
+1:{cellWidth:COLS[1]},
+2:{cellWidth:COLS[2]},
+3:{cellWidth:COLS[3]},
+4:{cellWidth:COLS[4],halign:'center'},
+5:{cellWidth:COLS[5],halign:'center'},
+6:{cellWidth:COLS[6],overflow:'linebreak'},
+7:{cellWidth:COLS[7],halign:'center'}
+},
+
+theme:'grid',
+
+styles:{
+fontSize:7,
+cellPadding:{top:1.5,bottom:1.5,left:1.5,right:1.5},
+lineColor:GRY,
+lineWidth:0.25,
+textColor:BLK,
+valign:'top',
+overflow:'linebreak'
+},
+
+margin:{left:ML,right:MR},
+tableWidth:CW,
+
+didParseCell:(data)=>{
+
+const ri=data.row.index
+const ci=data.column.index
+
+if(ri===0){
+
+data.cell.styles.fontStyle='bold'
+data.cell.styles.valign='middle'
+data.cell.styles.fillColor=WHT
+
+if(ci===0)(data.cell as any).colSpan=3
+else if(ci===3)(data.cell as any).colSpan=3
+else if(ci===6)(data.cell as any).colSpan=2
+else data.cell.styles.lineWidth=0
+
 }
 
-/* ---------- Footer ---------- */
+if(ri===1){
 
-function drawFooter(doc: jsPDF, nr: NRForPDF) {
+data.cell.styles.fontStyle='bold'
+data.cell.styles.halign='center'
+data.cell.styles.valign='middle'
+data.cell.styles.fillColor=WHT
+data.cell.styles.fontSize=7
 
-  const y = PH - 55
-
-  doc.setFontSize(8)
-
-  doc.text("Signature of Jathedar", ML, y)
-
-  doc.text("Name", ML, y + 7)
-
-  doc.text("Date", ML, y + 14)
-
-  doc.line(ML + 30, y + 1, ML + 90, y + 1)
-
-  doc.line(ML + 30, y + 8, ML + 90, y + 8)
-
-  doc.line(ML + 30, y + 15, ML + 90, y + 15)
-
-  doc.text("Secretary / Area Secretary", PW - 80, y + 7)
-
-  doc.text(`( Stamp )   Date : ${today()}`, PW - 80, y + 14)
-
-  doc.setDrawColor(200)
-
-  doc.line(ML, y + 22, PW - MR, y + 22)
-
-  doc.text(
-    `Arrival Date & Time : ${formatDate(nr.from_date)} - 03:20 PM`,
-    ML,
-    y + 30
-  )
-
-  doc.text(
-    `Departure Date & Time : ${formatDate(nr.to_date)} - 03:20 PM`,
-    ML,
-    y + 36
-  )
-
-  doc.line(ML, y + 42, PW - MR, y + 42)
 }
 
-/* ---------- Main Export ---------- */
+if(ri>=2&&ri<de&&ri%2===0)data.cell.styles.fillColor=ALT
 
-export async function generateNRPDF(opts: GeneratePDFOptions) {
+if(ri===de||ri===de+1){
 
-  const { nr, sections, jathedar } = opts
+data.cell.styles.fontStyle='bold'
+data.cell.styles.halign='center'
+data.cell.styles.valign='middle'
 
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4"
-  })
+if(ci<=1||ci===7){
+data.cell.styles.lineWidth=0
+}
 
-  const members = sections.flatMap(s => s.members)
+if(ci===2)(data.cell as any).colSpan=2
+if(ci===6&&ri===de)(data.cell as any).rowSpan=2
 
-  const maleMembers = members.filter(m => m.gender === "M")
+}
 
-  const femaleMembers = members.filter(m => m.gender === "F")
+},
 
-  /* ---- Male page ---- */
+didDrawCell:(data)=>{
 
-  let y = drawHeader(doc, nr, "MALE", jathedar)
+if(data.row.index===de&&data.column.index===2){
 
-  y = drawTable(doc, nr, maleMembers, "M", y)
+const bw=COLS[2]+COLS[3]+COLS[4]+COLS[5]+COLS[6]
+const bh=data.cell.height*2
 
-  drawFooter(doc, nr)
+doc.setDrawColor(...BLK)
+doc.setLineWidth(0.5)
 
-  /* ---- Female page ---- */
+doc.rect(data.cell.x,data.cell.y,bw,bh)
 
-  if (femaleMembers.length) {
+}
 
-    doc.addPage()
+}
 
-    y = drawHeader(doc, nr, "FEMALE", jathedar)
+})
 
-    y = drawTable(doc, nr, femaleMembers, "F", y)
+/* ---------- FOOTER ---------- */
 
-    drawFooter(doc, nr)
-  }
+const fY = PH - MB - 48
 
-  const filename =
-    (nr.jatha_name || "NR").replace(/\s+/g, "_") + "_NR.pdf"
+doc.setFontSize(8)
 
-  doc.save(filename)
+const lx=ML
+const ux=ML+SA-2
+const ue=ML+SA+SB
+
+doc.text('Signature of Jathedar',lx,fY+6)
+doc.text('Name',lx,fY+13)
+doc.text('Date',lx,fY+20)
+
+doc.setDrawColor(...BLK)
+doc.setLineWidth(0.4)
+
+doc.line(ux,fY+7,ue,fY+7)
+doc.line(ux,fY+14,ue,fY+14)
+doc.line(ux,fY+21,ue,fY+21)
+
+doc.setFont('helvetica','bold')
+doc.text(jathName,ux+1,fY+13)
+doc.setFont('helvetica','normal')
+
+const rx=ML+SA+SB+SC
+const rw=SE
+
+doc.line(rx,fY+8,rx+rw,fY+8)
+
+doc.text('Secretary / Area Secretary',rx+rw/2,fY+14,{align:'center'})
+doc.text(`( Stamp )   Date : ${td()}`,rx+rw/2,fY+20,{align:'center'})
+
+const eq1Y=fY+26
+
+doc.setDrawColor(...GRY)
+doc.setLineWidth(0.25)
+doc.line(ML,eq1Y,ML+CW,eq1Y)
+
+const aY=eq1Y+4
+
+doc.setFontSize(8.5)
+doc.setFont('helvetica','bold')
+
+doc.text('Arrival Date & Time',ML,aY+5)
+doc.text('Departure Date & Time',ML,aY+11)
+
+doc.setFont('helvetica','normal')
+doc.setFontSize(8)
+
+doc.text(`: ${fd(nr.from_date)} - 03:20 PM`,ML+CW*0.32,aY+5)
+doc.text(`: ${fd(nr.to_date)}   - 03:20 PM`,ML+CW*0.32,aY+11)
+
+}
+
+/* ---------- EXPORT ---------- */
+
+export async function generateNRPDF(opts: GeneratePDFOptions){
+
+const{nr,sections,jathedar}=opts
+
+const doc=new jsPDF({
+orientation:'portrait',
+unit:'mm',
+format:'a4'
+})
+
+sheet(doc,nr,sections,jathedar,'M','MALE',true)
+sheet(doc,nr,sections,jathedar,'F','FEMALE',false)
+
+const fn=`${(nr.jatha_name??'NR').replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_')}_NR.pdf`
+
+doc.save(fn)
+
 }
