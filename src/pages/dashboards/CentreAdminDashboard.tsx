@@ -1,61 +1,35 @@
 import { useState, useEffect } from 'react'
-import { FileText, Users, ChevronRight, Calendar } from 'lucide-react'
+import { FileText, Users, ChevronRight, Calendar, Check, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { Badge } from '@/components/ui/index'
 import { useAuth } from '@/hooks/useAuth'
 
 interface JathaCard {
-  schedule_id:  number
-  jatha_name:   string
-  destination:  string
-  department:   string
-  from_date:    string
-  to_date:      string
-  quota:        number
-  nr_id:        number | null
-  nr_status:    string | null
-  member_count: number
-  male_count:   number
-  female_count: number
-}
-
-interface NRRow {
-  id:                 number
-  status:             string
-  jatha_schedule_id:  number
-  member_count:       number
-  male_count:         number
-  female_count:       number
-}
-
-interface QuotaRow {
-  quota_count:       number
-  sewa_schedule_id:  number
-}
-
-interface ScheduleRow {
-  id:          number
-  jatha_name:  string
-  destination: string
-  department:  string
-  from_date:   string
-  to_date:     string
-  is_published: boolean
-  is_active:   boolean
-}
-
-const nrStatusConfig: Record<string, { label: string; labelHi: string; color: string; bar: string }> = {
-  draft:     { label: 'Draft',     labelHi: 'मसौदा',    color: 'bg-slate-100 text-slate-600 border-slate-200',    bar: 'bg-slate-400' },
-  submitted: { label: 'Submitted', labelHi: 'जमा',      color: 'bg-navy-100 text-navy-700 border-navy-200',       bar: 'bg-navy-500' },
-  approved:  { label: 'Approved',  labelHi: 'स्वीकृत',  color: 'bg-green-100 text-green-700 border-green-200',    bar: 'bg-green-500' },
-  issued:    { label: 'Issued',    labelHi: 'जारी',      color: 'bg-maroon-100 text-maroon-700 border-maroon-200', bar: 'bg-maroon-500' },
-  rejected:  { label: 'Rejected',  labelHi: 'अस्वीकृत', color: 'bg-red-100 text-red-700 border-red-200',         bar: 'bg-red-500' },
+  schedule_id:    number
+  jatha_name:     string
+  destination:    string
+  department:     string
+  from_date:      string
+  to_date:        string
+  quota:          number          // parent centre's ASO quota
+  sub_quota:      number          // my sub-centre quota (if sub-centre)
+  nr_id:          number | null
+  nr_status:      string | null
+  nr_owner:       string | null   // which centre owns this NR
+  my_member_count: number         // how many members I've added
+  total_count:    number          // total across all sections
+  sections_ready: number
+  sections_total: number
+  is_owner:       boolean
 }
 
 export default function CentreAdminDashboard() {
   const { user }                           = useAuth()
   const [cards,         setCards]          = useState<JathaCard[]>([])
   const [sewadarsCount, setSewadarsCount]  = useState(0)
+  const [parentCentre,  setParentCentre]   = useState<string | null>(null)
+  const [isSubCentre,   setIsSubCentre]    = useState(false)
   const [loading,       setLoading]        = useState(true)
 
   useEffect(() => { if (user) fetchData() }, [user])
@@ -64,109 +38,113 @@ export default function CentreAdminDashboard() {
     if (!user) return
     setLoading(true)
     try {
-      // Step 1: sewadar count
-      const { count } = await supabase
-        .from('sewadars')
+      // Check if sub-centre
+      const { data: centreData } = await supabase
+        .from('centres').select('centre_name, parent_centre')
+        .eq('centre_name', user.centre).single()
+      const isSub = centreData?.parent_centre !== centreData?.centre_name
+      setIsSubCentre(isSub)
+      setParentCentre(isSub ? centreData?.parent_centre ?? null : null)
+
+      // Sewadar count
+      const { count } = await supabase.from('sewadars')
         .select('*', { count: 'exact', head: true })
-        .eq('centre', user.centre)
-        .eq('is_active', true)
+        .eq('centre', user.centre).eq('is_active', true)
       setSewadarsCount(count ?? 0)
 
-      // Step 2: get quotas for this centre with quota > 0
-      const { data: quotaRaw } = await supabase
+      // Get schedules assigned to this centre (or parent centre if sub-centre)
+      const quotaCentre = isSub ? (centreData?.parent_centre ?? user.centre) : user.centre
+
+      const { data: quotaData } = await supabase
         .from('sewa_quota')
         .select('quota_count, sewa_schedule_id')
-        .eq('centre', user.centre)
+        .eq('centre', quotaCentre)
         .gt('quota_count', 0)
 
-      const quotas = (quotaRaw ?? []) as QuotaRow[]
-      if (quotas.length === 0) {
+      if (!quotaData || quotaData.length === 0) {
         setCards([])
         setLoading(false)
         return
       }
 
-      const scheduleIds = quotas.map(q => q.sewa_schedule_id)
+      const scheduleIds = quotaData.map((q: any) => q.sewa_schedule_id)
+      const quotaMap    = new Map(quotaData.map((q: any) => [q.sewa_schedule_id, q.quota_count]))
 
-      // Step 3: get schedule details for those ids
-      const { data: scheduleRaw } = await supabase
+      // Get schedule details
+      const { data: schedData } = await supabase
         .from('sewa_schedule')
-        .select('id, jatha_name, destination, department, from_date, to_date, is_published, is_active')
+        .select('id,jatha_name,destination,department,from_date,to_date,is_published,is_active')
         .in('id', scheduleIds)
-        .eq('is_published', true)
-        .eq('is_active', true)
+        .eq('is_published', true).eq('is_active', true)
+        .order('from_date')
 
-      const schedules = (scheduleRaw ?? []) as ScheduleRow[]
-      const scheduleMap = new Map(schedules.map(s => [s.id, s]))
+      if (!schedData) { setCards([]); setLoading(false); return }
 
-      // Filter quotas to only published + active schedules
-      const validQuotas = quotas.filter(q => scheduleMap.has(q.sewa_schedule_id))
-      if (validQuotas.length === 0) {
-        setCards([])
-        setLoading(false)
-        return
+      // Get sub-centre quota if sub-centre
+      let subQuotaMap = new Map<number, number>()
+      if (isSub) {
+        const { data: scqData } = await supabase
+          .from('sub_centre_quota')
+          .select('quota_count, sewa_schedule_id')
+          .eq('sub_centre', user.centre)
+          .in('sewa_schedule_id', scheduleIds)
+        subQuotaMap = new Map((scqData ?? []).map((q: any) => [q.sewa_schedule_id, q.quota_count]))
       }
 
-      const validIds = validQuotas.map(q => q.sewa_schedule_id)
+      // Get NRs — owner is parent centre (or this centre if main)
+      const nrOwner = isSub ? (centreData?.parent_centre ?? user.centre) : user.centre
+      const { data: nrData } = await supabase
+        .from('v_nr_summary')
+        .select('id,status,sewa_schedule_id,member_count,centre,sections_ready,sections_total')
+        .eq('centre', nrOwner)
+        .in('sewa_schedule_id', scheduleIds)
 
-      // Step 4: check NRs — use nominal_roles directly (not the view, avoids TS issues)
-      const { data: nrRaw } = await supabase
-        .from('nominal_roles')
-        .select('id, status, jatha_schedule_id')
-        .eq('centre', user.centre)
-        .in('jatha_schedule_id', validIds)
+      const nrMap = new Map((nrData ?? []).map((nr: any) => [nr.sewa_schedule_id, nr]))
 
-      const nrList = (nrRaw ?? []) as Array<{ id: number; status: string; jatha_schedule_id: number }>
-      const nrMap  = new Map(nrList.map(nr => [nr.jatha_schedule_id, nr]))
-
-      // Step 5: for NRs that exist, get member counts
-      const nrIds = nrList.map(nr => nr.id)
-      let memberCounts: Record<number, { total: number; male: number; female: number }> = {}
-
+      // Get my contributed member counts
+      const nrIds = (nrData ?? []).map((nr: any) => nr.id)
+      let myCountMap = new Map<number, number>()
       if (nrIds.length > 0) {
-        const { data: memberRaw } = await supabase
+        const { data: myMembers } = await supabase
           .from('nr_members')
-          .select('nominal_role_id, gender')
+          .select('nominal_role_id')
+          .eq('contributing_centre', user.centre)
           .in('nominal_role_id', nrIds)
-
-        const members = (memberRaw ?? []) as Array<{ nominal_role_id: number; gender: string }>
-        for (const m of members) {
-          if (!memberCounts[m.nominal_role_id]) {
-            memberCounts[m.nominal_role_id] = { total: 0, male: 0, female: 0 }
-          }
-          memberCounts[m.nominal_role_id].total++
-          if (m.gender === 'M') memberCounts[m.nominal_role_id].male++
-          else                  memberCounts[m.nominal_role_id].female++
+        const counts = new Map<number, number>()
+        for (const m of (myMembers ?? [])) {
+          counts.set(m.nominal_role_id, (counts.get(m.nominal_role_id) ?? 0) + 1)
+        }
+        // Map back to schedule_id
+        for (const nr of (nrData ?? [])) {
+          myCountMap.set(nr.sewa_schedule_id, counts.get(nr.id) ?? 0)
         }
       }
 
-      // Step 6: assemble cards
-      const jathaCards: JathaCard[] = validQuotas.map(q => {
-        const s  = scheduleMap.get(q.sewa_schedule_id)!
-        const nr = nrMap.get(q.sewa_schedule_id)
-        const mc = nr ? (memberCounts[nr.id] ?? { total: 0, male: 0, female: 0 }) : { total: 0, male: 0, female: 0 }
+      const jathaCards: JathaCard[] = schedData.map((s: any) => {
+        const nr = nrMap.get(s.id)
         return {
-          schedule_id:  s.id,
-          jatha_name:   s.jatha_name,
-          destination:  s.destination,
-          department:   s.department,
-          from_date:    s.from_date,
-          to_date:      s.to_date,
-          quota:        q.quota_count,
-          nr_id:        nr?.id ?? null,
-          nr_status:    nr?.status ?? null,
-          member_count: mc.total,
-          male_count:   mc.male,
-          female_count: mc.female,
+          schedule_id:     s.id,
+          jatha_name:      s.jatha_name,
+          destination:     s.destination,
+          department:      s.department,
+          from_date:       s.from_date,
+          to_date:         s.to_date,
+          quota:           quotaMap.get(s.id) ?? 0,
+          sub_quota:       subQuotaMap.get(s.id) ?? 0,
+          nr_id:           nr?.id ?? null,
+          nr_status:       nr?.status ?? null,
+          nr_owner:        nr?.centre ?? null,
+          my_member_count: myCountMap.get(s.id) ?? 0,
+          total_count:     nr?.member_count ?? 0,
+          sections_ready:  nr?.sections_ready ?? 0,
+          sections_total:  nr?.sections_total ?? 0,
+          is_owner:        !isSub,
         }
-      }).sort((a, b) => new Date(a.from_date).getTime() - new Date(b.from_date).getTime())
+      })
 
       setCards(jathaCards)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
+    } catch (err) { console.error(err) }
+    finally { setLoading(false) }
   }
 
   const activeCards = cards.filter(c => new Date(c.to_date) >= new Date())
@@ -178,7 +156,12 @@ export default function CentreAdminDashboard() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-800">{user?.centre}</h2>
-          <p className="text-xs text-slate-400">Centre Admin · केंद्र प्रबंधक</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-slate-400">Centre Admin</p>
+            {isSubCentre && parentCentre && (
+              <Badge variant="navy" className="text-[9px]">Sub-centre of {parentCentre}</Badge>
+            )}
+          </div>
         </div>
       </div>
 
@@ -190,22 +173,20 @@ export default function CentreAdminDashboard() {
         </div>
         <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
           <p className="text-xl font-bold text-amber-600">
-            {cards.filter(c => !c.nr_id || c.nr_status === 'draft').length}
+            {cards.filter(c => c.nr_id && c.nr_status === 'draft').length}
           </p>
-          <p className="text-[10px] text-slate-400">NRs Pending</p>
+          <p className="text-[10px] text-slate-400">NRs Open</p>
         </div>
         <div className="bg-navy-50 border border-navy-100 rounded-xl p-3 text-center">
           <p className="text-xl font-bold text-navy-600">{activeCards.length}</p>
-          <p className="text-[10px] text-slate-400">Active Jathas</p>
+          <p className="text-[10px] text-slate-400">Jathas</p>
         </div>
       </div>
 
       {/* Jatha cards */}
       {loading ? (
         <div className="space-y-3">
-          {[...Array(2)].map((_, i) => (
-            <div key={i} className="h-40 bg-slate-100 rounded-xl animate-pulse" />
-          ))}
+          {[...Array(2)].map((_,i) => <div key={i} className="h-48 bg-slate-100 rounded-xl animate-pulse" />)}
         </div>
       ) : activeCards.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 py-10 text-center">
@@ -221,113 +202,144 @@ export default function CentreAdminDashboard() {
                 Upcoming Jathas ({activeCards.length})
               </p>
               <div className="space-y-3">
-                {activeCards.map(card => <JathaCardView key={card.schedule_id} card={card} />)}
+                {activeCards.map(card => (
+                  <JathaCardView
+                    key={card.schedule_id}
+                    card={card}
+                    isSubCentre={isSubCentre}
+                    parentCentre={parentCentre}
+                  />
+                ))}
               </div>
             </div>
           )}
           {pastCards.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                Past Jathas
-              </p>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Past Jathas</p>
               <div className="space-y-3 opacity-70">
-                {pastCards.map(card => <JathaCardView key={card.schedule_id} card={card} />)}
+                {pastCards.map(card => (
+                  <JathaCardView key={card.schedule_id} card={card} isSubCentre={isSubCentre} parentCentre={parentCentre} />
+                ))}
               </div>
             </div>
           )}
         </>
       )}
 
-      {/* Quick links */}
       <div className="grid grid-cols-2 gap-3">
-        <Link to="/sewadars"
-          className="flex items-center gap-3 p-4 bg-navy-50 border border-navy-100 rounded-xl active:scale-95 touch-manipulation">
+        <Link to="/sewadars" className="flex items-center gap-3 p-4 bg-navy-50 border border-navy-100 rounded-xl active:scale-95 touch-manipulation">
           <Users size={18} className="text-navy-600" />
-          <div>
-            <p className="text-sm font-semibold text-navy-700">Sewadars</p>
-            <p className="text-[10px] text-navy-400">सेवादार</p>
-          </div>
+          <div><p className="text-sm font-semibold text-navy-700">Sewadars</p><p className="text-[10px] text-navy-400">सेवादार</p></div>
         </Link>
-        <Link to="/reports"
-          className="flex items-center gap-3 p-4 bg-green-50 border border-green-100 rounded-xl active:scale-95 touch-manipulation">
+        <Link to="/reports" className="flex items-center gap-3 p-4 bg-green-50 border border-green-100 rounded-xl active:scale-95 touch-manipulation">
           <FileText size={18} className="text-green-600" />
-          <div>
-            <p className="text-sm font-semibold text-green-700">Reports</p>
-            <p className="text-[10px] text-green-400">रिपोर्ट</p>
-          </div>
+          <div><p className="text-sm font-semibold text-green-700">Reports</p><p className="text-[10px] text-green-400">रिपोर्ट</p></div>
         </Link>
       </div>
     </div>
   )
 }
 
-function JathaCardView({ card }: { card: JathaCard }) {
-  const cfg = card.nr_status ? nrStatusConfig[card.nr_status] : null
-  const pct = card.quota > 0
-    ? Math.min(Math.round((card.member_count / card.quota) * 100), 100)
-    : null
+function JathaCardView({ card, isSubCentre, parentCentre }: {
+  card: JathaCard; isSubCentre: boolean; parentCentre: string | null
+}) {
+  const effectiveQuota = isSubCentre ? card.sub_quota : card.quota
+  const myCount        = card.my_member_count
+  const pct            = effectiveQuota > 0 ? Math.min(Math.round((myCount / effectiveQuota) * 100), 100) : null
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div className="h-1 bg-maroon-500" />
       <div className="p-4">
 
-        {/* Title row */}
+        {/* Title */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-800 mb-0.5 leading-tight">
-              {card.jatha_name}
-            </h3>
+            <h3 className="text-sm font-semibold text-slate-800 mb-0.5 leading-tight">{card.jatha_name}</h3>
             <p className="text-xs text-slate-500">{card.destination} · {card.department}</p>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              {new Date(card.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              {new Date(card.from_date).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
               {' – '}
-              {new Date(card.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {new Date(card.to_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
             </p>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-lg font-bold text-maroon-600">{card.quota}</p>
-            <p className="text-[10px] text-slate-400">Quota</p>
+            <p className="text-lg font-bold text-maroon-600">{effectiveQuota || card.quota}</p>
+            <p className="text-[10px] text-slate-400">{isSubCentre ? 'My Quota' : 'Quota'}</p>
           </div>
         </div>
 
-        {/* NR status + member count */}
-        {card.nr_id && cfg && (
-          <>
-            <div className="flex items-center justify-between mb-2">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.color}`}>
-                {cfg.label} · {cfg.labelHi}
-              </span>
-              <span className="text-xs text-slate-500">
-                {card.member_count} members · M:{card.male_count} F:{card.female_count}
-              </span>
+        {/* Stats */}
+        {card.nr_id && (
+          <div className="space-y-2 mb-3">
+            {/* My contribution */}
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">My section</span>
+              <span className="font-semibold text-maroon-600">{myCount} members</span>
             </div>
-            {pct !== null && (
-              <div className="mb-3">
-                <div className="bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${cfg.bar}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">{pct}% of quota</p>
+
+            {/* Section readiness (show for owner) */}
+            {card.is_owner && card.sections_total > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Sections ready</span>
+                <span className={`font-semibold ${
+                  card.sections_ready === card.sections_total ? 'text-green-600' : 'text-amber-600'
+                }`}>
+                  {card.sections_ready}/{card.sections_total}
+                </span>
               </div>
             )}
-          </>
+
+            {/* Total NR count */}
+            {card.is_owner && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">Total in NR</span>
+                <span className="font-semibold text-slate-700">{card.total_count}</span>
+              </div>
+            )}
+
+            {/* Progress bar for my section */}
+            {pct !== null && (
+              <div className="bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div className={`h-full rounded-full ${
+                  pct >= 100 ? 'bg-green-500' : pct >= 70 ? 'bg-amber-500' : 'bg-maroon-500'
+                }`} style={{ width: `${pct}%` }} />
+              </div>
+            )}
+          </div>
         )}
 
         {/* Action button */}
         <div className="pt-3 border-t border-slate-100">
           {!card.nr_id ? (
-            <Link to={`/nominal-roles/new?schedule=${card.schedule_id}`}>
-              <button className="w-full py-2.5 bg-maroon-600 text-white rounded-lg text-xs font-semibold active:scale-95 touch-manipulation">
-                Create Nominal Role →
-              </button>
-            </Link>
+            // No NR exists yet
+            card.is_owner ? (
+              // Owner creates the NR
+              <Link to={`/nominal-roles/new?schedule=${card.schedule_id}`}>
+                <button className="w-full py-2.5 bg-maroon-600 text-white rounded-lg text-xs font-semibold active:scale-95 touch-manipulation">
+                  Create Nominal Role →
+                </button>
+              </Link>
+            ) : (
+              // Sub-centre waiting for parent to create NR
+              <div className="text-center py-1">
+                <p className="text-xs text-amber-600 flex items-center justify-center gap-1">
+                  <Clock size={12} /> Waiting for {parentCentre} to create NR
+                </p>
+              </div>
+            )
           ) : (
+            // NR exists — link to add/view members
             <Link to={`/nominal-roles/${card.nr_id}`}>
-              <button className="w-full py-2.5 border border-maroon-200 text-maroon-700 rounded-lg text-xs font-semibold active:scale-95 touch-manipulation flex items-center justify-center gap-1.5">
-                {card.nr_status === 'draft' ? 'Continue NR' : 'View NR'}
+              <button className={[
+                'w-full py-2.5 rounded-lg text-xs font-semibold active:scale-95 touch-manipulation flex items-center justify-center gap-1.5',
+                card.nr_status === 'draft'
+                  ? 'border border-maroon-200 text-maroon-700'
+                  : 'border border-slate-200 text-slate-600',
+              ].join(' ')}>
+                {card.nr_status === 'draft' && !card.is_owner ? 'Add My Members' :
+                 card.nr_status === 'draft' && card.is_owner ? 'Manage NR' :
+                 'View NR'}
                 <ChevronRight size={12} />
               </button>
             </Link>
