@@ -53,12 +53,6 @@ function formatDateDisplay(dateStr: string | null): string {
   return `${day} ${month} ${year}`
 }
 
-function formatDateForExcel(dateStr: string | null): any {
-  if (!dateStr) return null
-  const d = new Date(dateStr)
-  return d
-}
-
 function calculateDays(fromDate: string | null, toDate: string | null): number {
   if (!fromDate || !toDate) return 1
   return Math.round((new Date(toDate).getTime() - new Date(fromDate).getTime()) / 86400000) + 1
@@ -72,10 +66,33 @@ function getTodayDate(): string {
   return `${day} ${month} ${year}`
 }
 
+function setCellValue(ws: XLSX.WorkSheet, cellRef: string, value: string | number) {
+  const existingCell = ws[cellRef]
+  if (existingCell) {
+    existingCell.v = value
+    if (typeof value === 'number') {
+      existingCell.t = 'n'
+    } else {
+      existingCell.t = 's'
+    }
+  } else {
+    ws[cellRef] = {
+      t: typeof value === 'number' ? 'n' : 's',
+      v: value
+    }
+  }
+}
+
 async function loadWorkbook(): Promise<XLSX.WorkBook> {
   const response = await fetch('/NominalRole_Format.xlsx')
   const arrayBuffer = await response.arrayBuffer()
-  return XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellStyles: true, cellFormula: true, cellHTML: true })
+  return XLSX.read(new Uint8Array(arrayBuffer), { 
+    type: 'array', 
+    cellStyles: true, 
+    cellFormula: true, 
+    cellHTML: true,
+    sheetStubs: true
+  })
 }
 
 function populateSheet(
@@ -83,22 +100,22 @@ function populateSheet(
   nr: NRForExcel,
   members: (MemberForExcel & { srs_id: string | null })[]
 ) {
-  ws['C7'] = { t: 's', v: nr.centre }
-  ws['C8'] = { t: 's', v: nr.jathedar_name || '' }
-  ws['C9'] = { t: 's', v: nr.jathedar_phone || '' }
-  ws['C10'] = { t: 's', v: nr.destination || '' }
-  ws['F10'] = { t: 's', v: nr.department || '' }
+  setCellValue(ws, 'C7', nr.centre)
+  setCellValue(ws, 'C8', nr.jathedar_name || '')
+  setCellValue(ws, 'C9', nr.jathedar_phone || '')
+  setCellValue(ws, 'C10', nr.destination || '')
+  setCellValue(ws, 'F10', nr.department || '')
   
   const driverMobile = nr.driver_name && nr.driver_mobile 
     ? `${nr.driver_name} | ${nr.driver_mobile}` 
     : (nr.driver_name || '')
-  ws['H8'] = { t: 's', v: driverMobile }
-  ws['H9'] = { t: 's', v: nr.vehicle_type || '' }
+  setCellValue(ws, 'H8', driverMobile)
+  setCellValue(ws, 'H9', nr.vehicle_type || '')
 
   const days = calculateDays(nr.from_date, nr.to_date)
-  ws['D12'] = { t: 'n', v: days }
-  ws['F12'] = { t: 'd', v: formatDateForExcel(nr.from_date) }
-  ws['H12'] = { t: 'd', v: formatDateForExcel(nr.to_date) }
+  setCellValue(ws, 'D12', days)
+  setCellValue(ws, 'F12', formatDateDisplay(nr.from_date))
+  setCellValue(ws, 'H12', formatDateDisplay(nr.to_date))
 
   const dataStartRow = 14
   
@@ -108,38 +125,29 @@ function populateSheet(
     const addressPhone = [m.address, m.mobile].filter(Boolean).join('\n')
     const centreSrs = m.srs_id ? `${m.contributing_centre}\nSRS: ${m.srs_id}` : m.contributing_centre
 
-    const colA = `A${row}`
-    const colB = `B${row}`
-    const colC = `C${row}`
-    const colD = `D${row}`
-    const colE = `E${row}`
-    const colF = `F${row}`
-    const colG = `G${row}`
-    const colH = `H${row}`
-
-    ws[colA] = { t: 'n', v: idx + 1 }
-    ws[colB] = { t: 's', v: idDisplay }
-    ws[colC] = { t: 's', v: m.name }
-    ws[colD] = { t: 's', v: m.father_name || '' }
-    ws[colE] = { t: 's', v: m.gender }
-    ws[colF] = { t: 'n', v: m.age || 0 }
-    ws[colG] = { t: 's', v: addressPhone }
-    ws[colH] = { t: 's', v: centreSrs }
+    setCellValue(ws, `A${row}`, idx + 1)
+    setCellValue(ws, `B${row}`, idDisplay)
+    setCellValue(ws, `C${row}`, m.name)
+    setCellValue(ws, `D${row}`, m.father_name || '')
+    setCellValue(ws, `E${row}`, m.gender)
+    setCellValue(ws, `F${row}`, m.age ?? 0)
+    setCellValue(ws, `G${row}`, addressPhone)
+    setCellValue(ws, `H${row}`, centreSrs)
   })
 
   const maleCount = members.filter(m => m.gender.toUpperCase() === 'M').length
   const femaleCount = members.filter(m => m.gender.toUpperCase() === 'F').length
   const totalCount = maleCount + femaleCount
 
-  ws['E16'] = { t: 'n', v: maleCount }
-  ws['F16'] = { t: 'n', v: femaleCount }
-  ws['G15'] = { t: 'n', v: totalCount }
+  setCellValue(ws, 'E16', maleCount)
+  setCellValue(ws, 'F16', femaleCount)
+  setCellValue(ws, 'G15', totalCount)
 
   const todayDate = getTodayDate()
-  ws['H26'] = { t: 's', v: `( Stamp ) Date : ${todayDate}` }
+  setCellValue(ws, 'H26', `( Stamp ) Date : ${todayDate}`)
 
-  ws['E31'] = { t: 's', v: `: ${formatDateDisplay(nr.from_date)}` }
-  ws['E32'] = { t: 's', v: `: ${formatDateDisplay(nr.to_date)}` }
+  setCellValue(ws, 'E31', `: ${formatDateDisplay(nr.from_date)}`)
+  setCellValue(ws, 'E32', `: ${formatDateDisplay(nr.to_date)}`)
 }
 
 export async function generateNRExcel(opts: GenerateExcelOptions): Promise<void> {
@@ -150,11 +158,10 @@ export async function generateNRExcel(opts: GenerateExcelOptions): Promise<void>
   const maleWs = wb.Sheets['Male']
   const femaleWs = wb.Sheets['Female']
 
-  const genderFilter = 'M'
   const maleMembers: (MemberForExcel & { srs_id: string | null })[] = []
   sections.forEach(section => {
     section.members
-      .filter(m => m.gender.toUpperCase() === genderFilter)
+      .filter(m => m.gender.toUpperCase() === 'M')
       .forEach(m => {
         maleMembers.push({ ...m, srs_id: section.srs_id })
       })
