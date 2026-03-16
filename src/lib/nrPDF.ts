@@ -154,13 +154,13 @@ export async function generateNRPDF(options: GeneratePDFOptions): Promise<void> 
     const sectionTitle = `${section.centre}${section.srs_id ? '   SRS: ' + section.srs_id : ''}   (M:${secMale}  F:${secFemale})`
 
     const tableBody = sorted.map((m, idx) => [
-      String(idx + 1),
-      m.name + (m.is_jathedar ? '  ★' : ''),
-      m.father_name ?? '—',
-      m.age != null ? String(m.age) : '—',
-      m.gender === 'M' ? 'M' : 'F',
+      m.is_jathedar ? '★' : String(idx + 1),
+      m.display_id,
+      m.name + (m.father_name ? '\nS/o ' + m.father_name : '') + (m.is_jathedar ? '  ★' : ''),
       m.address ?? '—',
       m.mobile ?? '—',
+      m.gender === 'M' ? 'M' : 'F',
+      m.age != null ? String(m.age) : '—',
       section.srs_id ?? '—',
     ])
 
@@ -168,7 +168,7 @@ export async function generateNRPDF(options: GeneratePDFOptions): Promise<void> 
       startY: y + 1,
       head: [
         [{ content: sectionTitle, colSpan: 8 }],
-        ['S.No', 'Name', 'Father Name', 'Age', 'M/F', 'Address', 'Mobile', 'SRS ID'],
+        ['S.No', 'Badge / Aadhaar', 'Name (S/o Father)', 'Address', 'Mobile', 'M/F', 'Age', 'SRS ID'],
       ],
       body: tableBody,
       theme: 'striped',
@@ -183,13 +183,13 @@ export async function generateNRPDF(options: GeneratePDFOptions): Promise<void> 
       bodyStyles: { fontSize: 7.5, cellPadding: 1.5 },
       columnStyles: {
         0: { cellWidth: 10, halign: 'center' as const },
-        1: { cellWidth: 42, fontStyle: 'bold' as const },
-        2: { cellWidth: 35 },
-        3: { cellWidth: 10, halign: 'center' as const },
-        4: { cellWidth: 10, halign: 'center' as const },
-        5: { cellWidth: 60 },
-        6: { cellWidth: 26 },
-        7: { cellWidth: 20, halign: 'center' as const },
+        1: { cellWidth: 28 },
+        2: { cellWidth: 42, fontStyle: 'bold' as const },
+        3: { cellWidth: 55 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 10, halign: 'center' as const },
+        6: { cellWidth: 10, halign: 'center' as const },
+        7: { cellWidth: 22, halign: 'center' as const },
       },
       margin: { left: margin, right: margin },
       tableWidth: contentW,

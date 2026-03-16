@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ChevronLeft, CheckCircle, XCircle, Edit2, Send,
-  FileText, Star, Info, Download
+  FileText, Star, Info, Download, Loader
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { generateNRPDF } from '@/lib/nrPDF'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/index'
 
@@ -99,6 +100,7 @@ export default function NRDetailPage() {
   const [showReject,   setShowReject]   = useState(false)
   const [rejectType,   setRejectType]   = useState<'aso'|'centre'>('aso')
   const [acting,       setActing]       = useState(false)
+  const [pdfLoading,   setPdfLoading]   = useState(false)
   const [activeTab,    setActiveTab]    = useState<'members'|'comments'>('members')
 
   const isASO        = user?.role === 'aso'
@@ -163,6 +165,91 @@ export default function NRDetailPage() {
     } finally { setActing(false) }
   }
 
+  const handleDownloadPDF = async () => {
+    if (!nr || !id) return
+    setPdfLoading(true)
+    try {
+      // Build sections with their members
+      const sectionData = contributingCentresForPDF().map(centre => {
+        const sec = sections.find(s => s.centre === centre)
+        const centreMembers = members
+          .filter(m => m.contributing_centre === centre)
+          .sort((a, b) => {
+            if (a.is_jathedar) return -1
+            if (b.is_jathedar) return 1
+            if (a.gender !== b.gender) return a.gender === 'M' ? -1 : 1
+            return a.name.localeCompare(b.name)
+          })
+        return {
+          centre,
+          srs_id:   sec?.srs_id ?? null,
+          is_ready: sec?.is_ready ?? false,
+          members:  centreMembers.map((m, idx) => ({
+            serial_no:           idx + 1,
+            display_id:          m.display_id,
+            name:                m.name,
+            father_name:         m.father_name,
+            gender:              m.gender,
+            age:                 m.age,
+            address:             m.address,
+            mobile:              m.mobile,
+            is_jathedar:         m.is_jathedar,
+            contributing_centre: m.contributing_centre,
+          })),
+        }
+      })
+
+      const jathedarMember = members.find(m => m.is_jathedar) ?? null
+
+      await generateNRPDF({
+        nr: {
+          id:            nr.id,
+          centre:        nr.centre,
+          jatha_name:    nr.jatha_name,
+          destination:   nr.destination,
+          department:    nr.department,
+          from_date:     nr.from_date,
+          to_date:       nr.to_date,
+          jathedar_name: nr.jathedar_name,
+          jathedar_phone: nr.jathedar_phone,
+          vehicle_type:  nr.vehicle_type,
+          driver_name:   nr.driver_name,
+          driver_mobile: nr.driver_mobile,
+          member_count:  nr.member_count,
+          male_count:    nr.male_count,
+          female_count:  nr.female_count,
+        },
+        sections: sectionData,
+        jathedar: jathedarMember ? {
+          serial_no:           0,
+          display_id:          jathedarMember.display_id,
+          name:                jathedarMember.name,
+          father_name:         jathedarMember.father_name,
+          gender:              jathedarMember.gender,
+          age:                 jathedarMember.age,
+          address:             jathedarMember.address,
+          mobile:              jathedarMember.mobile,
+          is_jathedar:         true,
+          contributing_centre: jathedarMember.contributing_centre,
+        } : null,
+      })
+    } catch (err: any) {
+      console.error('PDF error:', err)
+      alert('PDF generation failed: ' + (err.message ?? 'Unknown error'))
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  // Helper used by PDF and member table
+  const contributingCentresForPDF = () =>
+    Array.from(new Set(members.map(m => m.contributing_centre)))
+      .sort((a, b) => {
+        if (a === nr!.centre) return -1
+        if (b === nr!.centre) return 1
+        return a.localeCompare(b)
+      })
+
   if (loading) return (
     <div className="max-w-4xl mx-auto space-y-4">
       {[...Array(3)].map((_,i) => <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />)}
@@ -189,12 +276,7 @@ export default function NRDetailPage() {
   const showCentreActions = isParentCentre && nr.status === 'submitted_to_centre'
 
   // Centres ordered: owner first, then alphabetical
-  const contributingCentres = Array.from(new Set(members.map(m => m.contributing_centre)))
-    .sort((a, b) => {
-      if (a === nr.centre) return -1
-      if (b === nr.centre) return 1
-      return a.localeCompare(b)
-    })
+  const contributingCentres = contributingCentresForPDF()
 
   return (
     <div className="max-w-4xl mx-auto space-y-4">
@@ -379,6 +461,20 @@ export default function NRDetailPage() {
             {isSubContrib ? `Add / Edit My Members (${user?.centre})` : isASO ? 'Edit NR (ASO)' : 'Edit NR'}
           </button>
         </Link>
+      )}
+
+      {/* Download PDF button — visible to owner and ASO */}
+      {(isOwner || isASO) && members.length > 0 && (
+        <button
+          onClick={handleDownloadPDF}
+          disabled={pdfLoading}
+          className="w-full py-3 bg-navy-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {pdfLoading
+            ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating PDF...</>
+            : <><Download size={15} /> Download NR (PDF)</>
+          }
+        </button>
       )}
 
       {/* Tabs */}
