@@ -5,83 +5,83 @@ import {
   FileText, Star, Info, Download, ThumbsUp, ThumbsDown, Award,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { generateNRExcel } from '@/lib/nrExcel'
+import { generateNRDocx } from '@/lib/nrWord'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/index'
 
 interface NRDetail {
-  id: number
-  centre: string
-  parent_centre: string | null
-  is_sub_centre: boolean
-  status: string
-  srs_id: string | null
-  jatha_name: string | null
-  destination: string | null
-  department: string | null
-  from_date: string | null
-  to_date: string | null
-  quota: number
-  member_count: number
-  male_count: number
-  female_count: number
-  jathedar_name: string | null
-  jathedar_phone: string | null
-  vehicle_type: string | null
-  driver_name: string | null
-  driver_mobile: string | null
-  rejection_reason: string | null
+  id:                      number
+  centre:                  string
+  parent_centre:           string | null
+  is_sub_centre:           boolean
+  status:                  string
+  srs_id:                  string | null
+  jatha_name:              string | null
+  destination:             string | null
+  department:              string | null
+  from_date:               string | null
+  to_date:                 string | null
+  quota:                   number
+  member_count:            number
+  male_count:              number
+  female_count:            number
+  jathedar_name:           string | null
+  jathedar_phone:          string | null
+  vehicle_type:            string | null
+  driver_name:             string | null
+  driver_mobile:           string | null
+  rejection_reason:        string | null
   centre_rejection_reason: string | null
-  submitted_at: string | null
-  approved_at: string | null
-  sewa_schedule_id: number | null
-  aso_notes: string | null
-  centre_notes: string | null
+  submitted_at:            string | null
+  approved_at:             string | null
+  sewa_schedule_id:        number | null
+  aso_notes:               string | null
+  centre_notes:            string | null
 }
 
 interface NRMember {
-  id: number
-  serial_no: number
-  display_id: string
-  name: string
-  father_name: string | null
-  gender: string
-  age: number | null
-  address: string | null
-  mobile: string | null
-  department: string | null
-  is_jathedar: boolean
+  id:                  number
+  serial_no:           number
+  display_id:          string
+  name:                string
+  father_name:         string | null
+  gender:              string
+  age:                 number | null
+  address:             string | null
+  mobile:              string | null
+  department:          string | null
+  is_jathedar:         boolean
   contributing_centre: string
-  member_type: 'sewadar' | 'sangat'
-  aadhaar_masked: string | null
+  member_type:         'sewadar' | 'sangat'
+  aadhaar_masked:      string | null
 }
 
 interface SectionStatus {
-  centre: string
-  srs_id: string | null
-  is_ready: boolean
+  centre:       string
+  srs_id:       string | null
+  is_ready:     boolean
   member_count: number
 }
 
 interface Review {
-  id: number
+  id:           number
   author_badge: string
-  author_role: string
+  author_role:  string
   comment_text: string
-  is_resolved: boolean
-  created_at: string
-  sewadars: { name: string } | null
+  is_resolved:  boolean
+  created_at:   string
+  sewadars:     { name: string }[] | null   // Supabase returns FK joins as arrays
 }
 
-const STATUS_CONFIG: Record<string, { variant: 'gray' | 'navy' | 'green' | 'maroon' | 'red' | 'gold'; label: string }> = {
-  draft: { variant: 'gray', label: 'Draft' },
-  submitted_to_centre: { variant: 'navy', label: 'Submitted to Centre' },
-  centre_approved: { variant: 'gold', label: 'Centre Approved' },
-  centre_rejected: { variant: 'red', label: 'Centre Rejected' },
-  submitted: { variant: 'navy', label: 'Submitted to HQ' },
-  approved: { variant: 'green', label: 'Approved' },
-  rejected: { variant: 'red', label: 'Rejected' },
-  issued: { variant: 'maroon', label: 'Issued' },
+const STATUS_CONFIG: Record<string, { variant: 'gray'|'navy'|'green'|'maroon'|'red'|'gold'; label: string }> = {
+  draft:               { variant: 'gray',   label: 'Draft' },
+  submitted_to_centre: { variant: 'navy',   label: 'Submitted to Centre' },
+  centre_approved:     { variant: 'gold',   label: 'Centre Approved' },
+  centre_rejected:     { variant: 'red',    label: 'Centre Rejected' },
+  submitted:           { variant: 'navy',   label: 'Submitted to HQ' },
+  approved:            { variant: 'green',  label: 'Approved' },
+  rejected:            { variant: 'red',    label: 'Rejected' },
+  issued:              { variant: 'maroon', label: 'Issued' },
 }
 
 function getVehicleLabels(vehicleType: string | null) {
@@ -90,36 +90,36 @@ function getVehicleLabels(vehicleType: string | null) {
 }
 
 export default function NRDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id }   = useParams<{ id: string }>()
   const { user } = useAuth()
 
-  const [nr, setNR] = useState<NRDetail | null>(null)
-  const [members, setMembers] = useState<NRMember[]>([])
-  const [sections, setSections] = useState<SectionStatus[]>([])
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [loading, setLoading] = useState(true)
-  const [comment, setComment] = useState('')
-  const [posting, setPosting] = useState(false)
+  const [nr,          setNR]         = useState<NRDetail | null>(null)
+  const [members,     setMembers]    = useState<NRMember[]>([])
+  const [sections,    setSections]   = useState<SectionStatus[]>([])
+  const [reviews,     setReviews]    = useState<Review[]>([])
+  const [loading,     setLoading]    = useState(true)
+  const [comment,     setComment]    = useState('')
+  const [posting,     setPosting]    = useState(false)
   const [rejectReason, setRejectReason] = useState('')
-  const [showReject, setShowReject] = useState(false)
-  const [rejectType, setRejectType] = useState<'aso' | 'centre'>('aso')
-  const [acting, setActing] = useState(false)
-  const [pdfLoading, setPdfLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'members' | 'comments' | 'notes'>('members')
+  const [showReject,   setShowReject]   = useState(false)
+  const [rejectType,   setRejectType]   = useState<'aso'|'centre'>('aso')
+  const [acting,       setActing]       = useState(false)
+  const [pdfLoading,   setPdfLoading]   = useState(false)
+  const [activeTab,    setActiveTab]    = useState<'members'|'comments'|'notes'>('members')
   // Notes editing
-  const [editingNotes, setEditingNotes] = useState<'aso' | 'centre' | null>(null)
-  const [asoNotesVal, setAsoNotesVal] = useState('')
-  const [centreNotesVal, setCentreNotesVal] = useState('')
-  const [savingNotes, setSavingNotes] = useState(false)
+  const [editingNotes,  setEditingNotes]  = useState<'aso'|'centre'|null>(null)
+  const [asoNotesVal,   setAsoNotesVal]   = useState('')
+  const [centreNotesVal,setCentreNotesVal] = useState('')
+  const [savingNotes,   setSavingNotes]   = useState(false)
 
-  const isASO = user?.role === 'aso'
-  const isOwner = nr && (isASO || user?.centre === nr.centre)
-  const isSubContrib = nr && !isOwner && user?.centre !== nr.centre
+  const isASO          = user?.role === 'aso'
+  const isOwner        = nr && (isASO || user?.centre === nr.centre)
+  const isSubContrib   = nr && !isOwner && user?.centre !== nr.centre
   const isParentCentre = !isASO && nr?.is_sub_centre && nr?.parent_centre === user?.centre
 
-  const mySection = sections.find(s => s.centre === user?.centre)
+  const mySection     = sections.find(s => s.centre === user?.centre)
   const myMemberCount = members.filter(m => m.contributing_centre === user?.centre).length
-  const mySrsId = mySection?.srs_id ?? null
+  const mySrsId       = mySection?.srs_id ?? null
 
   useEffect(() => { if (id && user) fetchAll() }, [id, user])
 
@@ -166,17 +166,7 @@ export default function NRDetailPage() {
       ])
 
       setMembers((mRes.data ?? []) as NRMember[])
-      setReviews(
-        (rRes.data ?? []).map((r: any) => ({
-          id: r.id,
-          author_badge: r.author_badge,
-          author_role: r.author_role,
-          comment_text: r.comment_text,
-          is_resolved: r.is_resolved,
-          created_at: r.created_at,
-          sewadars: r.sewadars ?? null,
-        }))
-      )
+      setReviews((rRes.data ?? []) as Review[])
       setSections((sRes.data ?? []) as SectionStatus[])
     } finally {
       setLoading(false)
@@ -190,9 +180,9 @@ export default function NRDetailPage() {
     try {
       const { error } = await supabase.from('nr_reviews').insert({
         nominal_role_id: parseInt(id),
-        author_badge: user.badge_number,
-        author_role: user.role,
-        comment_text: comment.trim(),
+        author_badge:    user.badge_number,
+        author_role:     user.role,
+        comment_text:    comment.trim(),
       })
       if (error) throw error
       setComment('')
@@ -205,7 +195,7 @@ export default function NRDetailPage() {
   }
 
   // FIX: log every status action
-  const doAction = async (status: string, extra: Record<string, unknown> = {}) => {
+  const doAction = async (status: string, extra: Record<string,unknown> = {}) => {
     if (!id || !user) return
     setActing(true)
     try {
@@ -218,11 +208,11 @@ export default function NRDetailPage() {
       // Audit log
       await supabase.from('logs').insert({
         user_badge: user.badge_number,
-        user_role: user.role,
-        action: `NR_${status.toUpperCase()}`,
+        user_role:  user.role,
+        action:     `NR_${status.toUpperCase()}`,
         table_name: 'nominal_roles',
-        record_id: id,
-        details: { previous_status: nr?.status, new_status: status, ...extra },
+        record_id:  id,
+        details:    { previous_status: nr?.status, new_status: status, ...extra },
       })
 
       setShowReject(false)
@@ -249,67 +239,87 @@ export default function NRDetailPage() {
     }
   }
 
-  const handleDownloadExcel = async () => {
+  const handleDownloadWord = async () => {
     if (!nr || !id) return
     setPdfLoading(true)
     try {
       const centreOrder = contributingCentresForPDF()
+
       const sectionData = centreOrder.map(centre => {
         const sec = sections.find(s => s.centre === centre)
         const centreMembers = members
           .filter(m => m.contributing_centre === centre)
           .sort((a, b) => {
-            if (a.is_jathedar) return -1
-            if (b.is_jathedar) return 1
+            if (a.is_jathedar && !b.is_jathedar) return -1
+            if (!a.is_jathedar && b.is_jathedar) return 1
             if (a.gender !== b.gender) return a.gender === 'M' ? -1 : 1
             return a.name.localeCompare(b.name)
           })
         return {
           centre,
-          srs_id: sec?.srs_id ?? null,
+          srs_id:   sec?.srs_id   ?? null,
           is_ready: sec?.is_ready ?? false,
-          members: centreMembers.map((m, idx) => ({
-            serial_no: idx + 1,
-            display_id: m.display_id,
-            name: m.name,
-            father_name: m.father_name,
-            gender: m.gender,
-            age: m.age,
-            address: m.address,
-            mobile: m.mobile,
-            is_jathedar: m.is_jathedar,
+          members:  centreMembers.map((m, idx) => ({
+            serial_no:           idx + 1,
+            display_id:          m.display_id,
+            name:                m.name,
+            father_name:         m.father_name,
+            gender:              m.gender,
+            age:                 m.age,
+            address:             m.address,
+            mobile:              m.mobile,
+            is_jathedar:         m.is_jathedar,
             contributing_centre: m.contributing_centre,
-            member_type: m.member_type,
-            aadhaar_masked: m.aadhaar_masked,
+            member_type:         m.member_type,
+            aadhaar_masked:      m.aadhaar_masked,
           })),
         }
       })
 
       const jathedarMember = members.find(m => m.is_jathedar) ?? null
 
-      await generateNRExcel({
+      await generateNRDocx({
         nr: {
-          id: nr.id,
-          centre: nr.centre,
-          jatha_name: nr.jatha_name,
-          destination: nr.destination,
-          department: nr.department,
-          from_date: nr.from_date,
-          to_date: nr.to_date,
-          jathedar_name: nr.jathedar_name,
-          jathedar_phone: nr.jathedar_phone,
-          vehicle_type: nr.vehicle_type,
-          driver_name: nr.driver_name,
-          driver_mobile: nr.driver_mobile,
-          member_count: nr.member_count,
-          male_count: nr.male_count,
-          female_count: nr.female_count,
+          id:               nr.id,
+          centre:           nr.centre,
+          jatha_name:       nr.jatha_name,
+          destination:      nr.destination,
+          department:       nr.department,
+          from_date:        nr.from_date,
+          to_date:          nr.to_date,
+          jathedar_name:    nr.jathedar_name,
+          jathedar_phone:   nr.jathedar_phone,
+          vehicle_type:     nr.vehicle_type,
+          driver_name:      nr.driver_name,
+          driver_mobile:    nr.driver_mobile,
+          member_count:     nr.member_count,
+          male_count:       nr.male_count,
+          female_count:     nr.female_count,
+          // Set arrival/departure times here.
+          // You can add these columns to sewa_schedule and pass them through,
+          // or hardcode your standard time if it never changes.
+          arrival_time:   '03:20 PM',
+          departure_time: '03:20 PM',
         },
         sections: sectionData,
+        jathedar: jathedarMember ? {
+          serial_no:           0,
+          display_id:          jathedarMember.display_id,
+          name:                jathedarMember.name,
+          father_name:         jathedarMember.father_name,
+          gender:              jathedarMember.gender,
+          age:                 jathedarMember.age,
+          address:             jathedarMember.address,
+          mobile:              jathedarMember.mobile,
+          is_jathedar:         true,
+          contributing_centre: jathedarMember.contributing_centre,
+          member_type:         jathedarMember.member_type,
+          aadhaar_masked:      jathedarMember.aadhaar_masked,
+        } : null,
       })
     } catch (err: any) {
-      console.error('Excel error:', err)
-      alert('Excel generation failed: ' + (err.message ?? 'Unknown error'))
+      console.error('Word generation error:', err)
+      alert('Word generation failed: ' + (err.message ?? 'Unknown error'))
     } finally {
       setPdfLoading(false)
     }
@@ -325,7 +335,7 @@ export default function NRDetailPage() {
 
   if (loading) return (
     <div className="max-w-4xl mx-auto space-y-4">
-      {[...Array(3)].map((_, i) => <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />)}
+      {[...Array(3)].map((_,i) => <div key={i} className="h-24 bg-slate-100 rounded-xl animate-pulse" />)}
     </div>
   )
 
@@ -336,7 +346,7 @@ export default function NRDetailPage() {
     </div>
   )
 
-  const cfg = STATUS_CONFIG[nr.status] ?? STATUS_CONFIG.draft
+  const cfg           = STATUS_CONFIG[nr.status] ?? STATUS_CONFIG.draft
   const vehicleLabels = getVehicleLabels(nr.vehicle_type)
   const contributingCentres = contributingCentresForPDF()
 
@@ -344,8 +354,8 @@ export default function NRDetailPage() {
     ? !['issued'].includes(nr.status)
     : ['draft', 'centre_rejected', 'rejected'].includes(nr.status)
 
-  const showASOActions = isASO && nr.status === 'submitted'
-  const showASOIssue = isASO && nr.status === 'approved'
+  const showASOActions    = isASO && nr.status === 'submitted'
+  const showASOIssue      = isASO && nr.status === 'approved'
   const showCentreActions = isParentCentre && nr.status === 'submitted_to_centre'
 
   const hasNotes = (nr.aso_notes && nr.aso_notes.trim()) || (nr.centre_notes && nr.centre_notes.trim())
@@ -399,9 +409,9 @@ export default function NRDetailPage() {
           <div>
             <p className="text-[10px] text-slate-400 uppercase tracking-wide">Dates</p>
             <p className="font-medium text-slate-800">
-              {nr.from_date && new Date(nr.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              {nr.from_date && new Date(nr.from_date).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
               {' – '}
-              {nr.to_date && new Date(nr.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {nr.to_date && new Date(nr.to_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
             </p>
           </div>
           <div>
@@ -412,9 +422,10 @@ export default function NRDetailPage() {
           {nr.quota > 0 && (
             <div>
               <p className="text-[10px] text-slate-400 uppercase tracking-wide">Quota</p>
-              <p className={`font-semibold ${nr.member_count > nr.quota ? 'text-red-600' :
-                  nr.member_count === nr.quota ? 'text-green-600' : 'text-slate-700'
-                }`}>{nr.member_count}/{nr.quota}</p>
+              <p className={`font-semibold ${
+                nr.member_count > nr.quota ? 'text-red-600' :
+                nr.member_count === nr.quota ? 'text-green-600' : 'text-slate-700'
+              }`}>{nr.member_count}/{nr.quota}</p>
             </div>
           )}
         </div>
@@ -532,17 +543,17 @@ export default function NRDetailPage() {
           <button className="w-full py-3 border border-maroon-200 text-maroon-700 rounded-xl text-sm font-semibold active:scale-95 touch-manipulation flex items-center justify-center gap-2">
             <Edit2 size={14} />
             {isSubContrib ? `Add / Edit My Members (${user?.centre})` :
-              isASO ? 'Edit NR (ASO)' : 'Edit NR'}
+             isASO ? 'Edit NR (ASO)' : 'Edit NR'}
           </button>
         </Link>
       )}
 
       {(isOwner || isASO) && members.length > 0 && (
-        <button onClick={handleDownloadExcel} disabled={pdfLoading}
+        <button onClick={handleDownloadWord} disabled={pdfLoading}
           className="w-full py-3 bg-navy-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
           {pdfLoading
-            ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating Excel...</>
-            : <><Download size={15} /> Download NR (Excel)</>
+            ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating Word...</>
+            : <><Download size={15} /> Download NR (Word)</>
           }
         </button>
       )}
@@ -550,9 +561,9 @@ export default function NRDetailPage() {
       {/* Tabs */}
       <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
         {[
-          { key: 'members', label: `Members (${members.length})` },
+          { key: 'members',  label: `Members (${members.length})` },
           { key: 'comments', label: `Comments (${reviews.length})` },
-          { key: 'notes', label: `Notes${hasNotes ? ' ●' : ''}` },
+          { key: 'notes',    label: `Notes${hasNotes ? ' ●' : ''}` },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key as typeof activeTab)}
             className={['flex-1 py-2 rounded-lg text-xs font-medium transition-all touch-manipulation',
@@ -580,21 +591,22 @@ export default function NRDetailPage() {
             contributingCentres.map(centre => {
               const centreMembers = members
                 .filter(m => m.contributing_centre === centre)
-                .sort((a, b) => {
+                .sort((a,b) => {
                   if (a.is_jathedar) return -1
                   if (b.is_jathedar) return 1
                   if (a.gender !== b.gender) return a.gender === 'M' ? -1 : 1
                   return a.name.localeCompare(b.name)
                 })
-              const sec = sections.find(s => s.centre === centre)
+              const sec        = sections.find(s => s.centre === centre)
               const isMyCentre = centre === user?.centre
-              const maleC = centreMembers.filter(m => m.gender === 'M').length
-              const femaleC = centreMembers.filter(m => m.gender === 'F').length
+              const maleC      = centreMembers.filter(m => m.gender === 'M').length
+              const femaleC    = centreMembers.filter(m => m.gender === 'F').length
 
               return (
                 <div key={centre} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                  <div className={`px-4 py-2.5 flex items-center justify-between ${centre === nr.centre ? 'bg-maroon-50' : isMyCentre ? 'bg-navy-50' : 'bg-slate-50'
-                    }`}>
+                  <div className={`px-4 py-2.5 flex items-center justify-between ${
+                    centre === nr.centre ? 'bg-maroon-50' : isMyCentre ? 'bg-navy-50' : 'bg-slate-50'
+                  }`}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-slate-800">{centre}</span>
                       {centre === nr.centre && <Badge variant="maroon" className="text-[9px]">Owner</Badge>}
@@ -711,17 +723,16 @@ export default function NRDetailPage() {
                 {reviews.map(r => (
                   <div key={r.id} className={`px-4 py-3 ${r.author_role === 'aso' ? 'bg-navy-50/30' : ''}`}>
                     <div className="flex items-center gap-2 mb-1">
-                      {/* FIX: use joined name from sewadars */}
                       <span className="text-xs font-semibold text-slate-700">
-                        {r.sewadars?.name ?? r.author_badge}
+                        {r.sewadars?.[0]?.name ?? r.author_badge}
                       </span>
                       <Badge variant={r.author_role === 'aso' ? 'navy' : 'gray'} className="text-[9px]">
                         {r.author_role === 'aso' ? 'ASO/HQ' : 'Centre Admin'}
                       </Badge>
                       <span className="text-[10px] text-slate-400 ml-auto">
-                        {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        {new Date(r.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}
                         {' '}
-                        {new Date(r.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(r.created_at).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })}
                       </span>
                     </div>
                     {/* FIX: use comment_text not comment */}
@@ -837,13 +848,13 @@ export default function NRDetailPage() {
               <button
                 onClick={() => rejectType === 'centre'
                   ? doAction('centre_rejected', {
-                    centre_rejected_at: new Date().toISOString(),
-                    centre_rejection_reason: rejectReason,
-                  })
+                      centre_rejected_at: new Date().toISOString(),
+                      centre_rejection_reason: rejectReason,
+                    })
                   : doAction('rejected', {
-                    rejected_at: new Date().toISOString(),
-                    rejection_reason: rejectReason,
-                  })
+                      rejected_at: new Date().toISOString(),
+                      rejection_reason: rejectReason,
+                    })
                 }
                 disabled={!rejectReason.trim() || acting}
                 className="py-3 rounded-xl bg-red-600 text-white font-semibold text-sm touch-manipulation disabled:opacity-50">
