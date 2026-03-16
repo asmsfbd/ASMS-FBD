@@ -6,19 +6,19 @@ import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/index'
 
 interface SangatRecord {
-  id:           number
-  sangat_id:    string
+  id:            number
+  sangat_id:     string
   aadhaar_last4: string
-  name:         string
-  father_name:  string | null
-  gender:       string
-  age:          number | null
-  mobile:       string | null
-  address:      string | null
-  centre:       string
-  is_active:    boolean
-  created_at:   string
-  created_by:   string | null
+  name:          string
+  father_name:   string | null
+  gender:        string
+  age:           number | null
+  mobile:        string | null
+  address:       string | null
+  centre:        string
+  is_active:     boolean
+  created_at:    string
+  created_by:    string | null
 }
 
 interface NRParticipation {
@@ -32,20 +32,20 @@ interface NRParticipation {
 }
 
 export default function SangatProfilePage() {
-  const { id }       = useParams<{ id: string }>()
-  const { user }     = useAuth()
-  const navigate     = useNavigate()
+  const { id }    = useParams<{ id: string }>()
+  const { user }  = useAuth()
+  const navigate  = useNavigate()
 
-  const [sangat,     setSangat]     = useState<SangatRecord | null>(null)
-  const [nrs,        setNRs]        = useState<NRParticipation[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [deleting,   setDeleting]   = useState(false)
+  const [sangat,      setSangat]      = useState<SangatRecord | null>(null)
+  const [nrs,         setNRs]         = useState<NRParticipation[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [deleting,    setDeleting]    = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
   const isASO         = user?.role === 'aso'
   const isCentreAdmin = user?.role === 'centre_admin'
   const canEdit       = isASO || (isCentreAdmin && sangat?.centre === user?.centre)
-  const canDelete     = isCentreAdmin && sangat?.centre === user?.centre || isASO
+  const canDelete     = isASO || (isCentreAdmin && sangat?.centre === user?.centre)
 
   useEffect(() => { if (id) fetchData() }, [id])
 
@@ -54,12 +54,13 @@ export default function SangatProfilePage() {
     try {
       const [swRes, nrRes] = await Promise.all([
         supabase.from('sangat').select('*').eq('id', id).single(),
+        // FIX: correct FK name — sewa_schedule not jatha_schedule
         supabase.from('nr_members')
           .select(`
             id,
             nominal_roles!nr_members_nominal_role_id_fkey (
               jatha_name, status,
-              jatha_schedule!nominal_roles_jatha_schedule_id_fkey (
+              sewa_schedule!nominal_roles_sewa_schedule_id_fkey (
                 destination, department, from_date, to_date
               )
             )
@@ -73,20 +74,20 @@ export default function SangatProfilePage() {
 
       const nrData = (nrRes.data ?? []).map((m: any) => {
         const nr = m.nominal_roles
-        const js = nr?.jatha_schedule
+        const ss = nr?.sewa_schedule
         return {
           id:          m.id,
           jatha_name:  nr?.jatha_name ?? '—',
-          destination: js?.destination ?? '—',
-          department:  js?.department ?? '—',
-          from_date:   js?.from_date ?? '—',
-          to_date:     js?.to_date ?? '—',
+          destination: ss?.destination ?? '—',
+          department:  ss?.department ?? '—',
+          from_date:   ss?.from_date ?? '—',
+          to_date:     ss?.to_date ?? '—',
           nr_status:   nr?.status ?? '—',
         }
       })
       setNRs(nrData)
     } catch (err) {
-      console.error(err)
+      console.error('SangatProfile fetchData error:', err)
     } finally {
       setLoading(false)
     }
@@ -96,9 +97,9 @@ export default function SangatProfilePage() {
     if (!sangat || !user) return
     setDeleting(true)
     try {
-      await supabase.from('sangat').delete().eq('id', sangat.id)
+      const { error } = await supabase.from('sangat').delete().eq('id', sangat.id)
+      if (error) throw error
 
-      // Log the deletion
       await supabase.from('logs').insert({
         user_badge: user.badge_number,
         user_role:  user.role,
@@ -106,16 +107,17 @@ export default function SangatProfilePage() {
         table_name: 'sangat',
         record_id:  String(sangat.id),
         details: {
-          deleted_name:   sangat.name,
-          deleted_id:     sangat.sangat_id,
-          aadhaar_last4:  sangat.aadhaar_last4,
-          centre:         sangat.centre,
+          deleted_name:  sangat.name,
+          deleted_id:    sangat.sangat_id,
+          aadhaar_last4: sangat.aadhaar_last4,
+          centre:        sangat.centre,
         },
       })
 
       navigate('/sangat')
-    } catch (err) {
-      console.error(err)
+    } catch (err: any) {
+      console.error('Delete sangat error:', err)
+      alert('Failed to delete: ' + (err.message ?? 'Unknown error'))
     } finally {
       setDeleting(false)
       setShowConfirm(false)
@@ -186,9 +188,7 @@ export default function SangatProfilePage() {
               <Badge variant={sangat.gender === 'M' ? 'navy' : 'maroon'} className="text-[10px]">
                 {sangat.gender === 'M' ? 'Male' : 'Female'}
               </Badge>
-              {sangat.age && (
-                <span className="text-xs text-slate-400">Age {sangat.age}</span>
-              )}
+              {sangat.age && <span className="text-xs text-slate-400">Age {sangat.age}</span>}
               <Badge variant="gray" className="text-[10px]">Sangat</Badge>
             </div>
           </div>
@@ -206,7 +206,7 @@ export default function SangatProfilePage() {
             <span className="w-5 text-center text-slate-400 font-mono text-xs">ID</span>
             <div>
               <p className="text-[10px] text-slate-400 uppercase tracking-wide">Aadhaar</p>
-              <p className="font-mono text-slate-700">XXXXXXXX{sangat.aadhaar_last4}</p>
+              <p className="font-mono text-slate-700">XXXX-XXXX-{sangat.aadhaar_last4}</p>
             </div>
           </div>
 
@@ -257,7 +257,11 @@ export default function SangatProfilePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800 truncate">{j.jatha_name}</p>
                     <p className="text-xs text-slate-500">{j.destination} · {j.department}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{j.from_date} – {j.to_date}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {j.from_date !== '—' ? new Date(j.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      {' – '}
+                      {j.to_date !== '—' ? new Date(j.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                    </p>
                   </div>
                   <Badge
                     variant={j.nr_status === 'issued' ? 'maroon' : j.nr_status === 'approved' ? 'green' : 'gray'}
@@ -295,14 +299,14 @@ export default function SangatProfilePage() {
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setShowConfirm(false)}
-                className="py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm active:scale-95 transition-transform touch-manipulation"
+                className="py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-semibold text-sm active:scale-95 touch-manipulation"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="py-3 rounded-xl bg-red-600 text-white font-semibold text-sm active:scale-95 transition-transform touch-manipulation disabled:opacity-50"
+                className="py-3 rounded-xl bg-red-600 text-white font-semibold text-sm active:scale-95 touch-manipulation disabled:opacity-50"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>

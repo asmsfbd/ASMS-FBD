@@ -14,21 +14,21 @@ interface AttendanceSummary {
 }
 
 interface RecentScan {
-  id:        number
-  type:      string
-  duty_type: string
-  scan_time: string
+  id:          number
+  type:        string
+  duty_type:   string
+  scan_time:   string
   scan_centre: string
 }
 
 interface JathaRecord {
-  id:           number
-  jatha_name:   string
-  destination:  string
-  department:   string
-  from_date:    string
-  to_date:      string
-  nr_status:    string
+  id:          number
+  jatha_name:  string
+  destination: string
+  department:  string
+  from_date:   string
+  to_date:     string
+  nr_status:   string
 }
 
 const statusVariant: Record<string, 'green' | 'navy' | 'gold' | 'red' | 'gray'> = {
@@ -38,35 +38,60 @@ const statusVariant: Record<string, 'green' | 'navy' | 'gold' | 'red' | 'gray'> 
 
 export default function SewadarProfilePage() {
   const { id } = useParams<{ id: string }>()
-  const [sewadar,    setSewadar]    = useState<Sewadar | null>(null)
-  const [summary,    setSummary]    = useState<AttendanceSummary | null>(null)
+  const [sewadar,     setSewadar]     = useState<Sewadar | null>(null)
+  const [summary,     setSummary]     = useState<AttendanceSummary | null>(null)
   const [recentScans, setRecentScans] = useState<RecentScan[]>([])
-  const [jathas,     setJathas]     = useState<JathaRecord[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [activeTab,  setActiveTab]  = useState<'profile' | 'attendance' | 'jatha'>('profile')
+  const [jathas,      setJathas]      = useState<JathaRecord[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [activeTab,   setActiveTab]   = useState<'profile' | 'attendance' | 'jatha'>('profile')
 
-  useEffect(() => {
-    if (id) fetchAll(id)
-  }, [id])
+  useEffect(() => { if (id) fetchAll(id) }, [id])
 
   const fetchAll = async (sewadarId: string) => {
     setLoading(true)
     try {
-      const [swRes, scansRes, jathaRes] = await Promise.all([
-        supabase.from('sewadars').select('*').eq('id', sewadarId).single(),
+      const { data: sw } = await supabase
+        .from('sewadars')
+        .select('*')
+        .eq('id', sewadarId)
+        .single()
 
+      const sewadarData = sw as Sewadar | null
+      setSewadar(sewadarData)
+
+      if (!sewadarData) return
+
+      // Run all queries in parallel
+      const [
+        totalRes, inRes, satsangRes, dailyRes, lastScanRes,
+        recentScansRes, jathaRes,
+      ] = await Promise.all([
+        // FIX: use count queries instead of fetching all rows
+        supabase.from('attendance').select('*', { count: 'exact', head: true })
+          .eq('badge_number', sewadarData.badge_number),
+        supabase.from('attendance').select('*', { count: 'exact', head: true })
+          .eq('badge_number', sewadarData.badge_number).eq('type', 'IN'),
+        supabase.from('attendance').select('*', { count: 'exact', head: true })
+          .eq('badge_number', sewadarData.badge_number).eq('type', 'IN').eq('duty_type', 'satsang_point'),
+        supabase.from('attendance').select('*', { count: 'exact', head: true })
+          .eq('badge_number', sewadarData.badge_number).eq('type', 'IN').eq('duty_type', 'daily_duty'),
+        supabase.from('attendance').select('scan_time')
+          .eq('badge_number', sewadarData.badge_number)
+          .order('scan_time', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
         supabase.from('attendance')
           .select('id, type, duty_type, scan_time, scan_centre')
-          .eq('badge_number', '') // will update after getting badge
+          .eq('badge_number', sewadarData.badge_number)
           .order('scan_time', { ascending: false })
           .limit(20),
-
+        // FIX: correct FK name — sewa_schedule not jatha_schedule
         supabase.from('nr_members')
           .select(`
             id,
             nominal_roles!nr_members_nominal_role_id_fkey (
               id, jatha_name, schedule_dates, status,
-              jatha_schedule!nominal_roles_jatha_schedule_id_fkey (
+              sewa_schedule!nominal_roles_sewa_schedule_id_fkey (
                 destination, department, from_date, to_date
               )
             )
@@ -76,57 +101,33 @@ export default function SewadarProfilePage() {
           .limit(10),
       ])
 
-      const sw = swRes.data as Sewadar | null
-      setSewadar(sw)
+      setSummary({
+        total_scans:        totalRes.count ?? 0,
+        total_in:           inRes.count ?? 0,
+        satsang_point_days: satsangRes.count ?? 0,
+        daily_duty_days:    dailyRes.count ?? 0,
+        last_scan:          lastScanRes.data?.scan_time ?? null,
+      })
 
-      if (sw) {
-        // Fetch attendance with correct badge
-        const { data: attData } = await supabase
-          .from('attendance')
-          .select('id, type, duty_type, scan_time, scan_centre')
-          .eq('badge_number', sw.badge_number)
-          .order('scan_time', { ascending: false })
-          .limit(20)
+      setRecentScans((recentScansRes.data ?? []) as RecentScan[])
 
-        const scans = (attData ?? []) as RecentScan[]
-        setRecentScans(scans)
-
-        // Build summary
-        const { data: allAtt } = await supabase
-          .from('attendance')
-          .select('type, duty_type, scan_time')
-          .eq('badge_number', sw.badge_number)
-
-        if (allAtt) {
-          const inScans = allAtt.filter(a => a.type === 'IN')
-          setSummary({
-            total_scans:        allAtt.length,
-            total_in:           inScans.length,
-            satsang_point_days: inScans.filter(a => a.duty_type === 'satsang_point').length,
-            daily_duty_days:    inScans.filter(a => a.duty_type === 'daily_duty').length,
-            last_scan:          allAtt.length > 0 ? allAtt[0].scan_time : null,
-          })
-        }
-      }
-
-      // Parse jatha records
       const jathaData = (jathaRes.data ?? []).map((m: any) => {
-        const nr  = m.nominal_roles
-        const js  = nr?.jatha_schedule
+        const nr = m.nominal_roles
+        const ss = nr?.sewa_schedule
         return {
           id:          m.id,
           jatha_name:  nr?.jatha_name ?? '—',
-          destination: js?.destination ?? '—',
-          department:  js?.department ?? '—',
-          from_date:   js?.from_date ?? '—',
-          to_date:     js?.to_date ?? '—',
+          destination: ss?.destination ?? '—',
+          department:  ss?.department ?? '—',
+          from_date:   ss?.from_date ?? '—',
+          to_date:     ss?.to_date ?? '—',
           nr_status:   nr?.status ?? '—',
         }
       })
       setJathas(jathaData)
 
     } catch (err) {
-      console.error(err)
+      console.error('SewadarProfile fetchAll error:', err)
     } finally {
       setLoading(false)
     }
@@ -325,7 +326,11 @@ export default function SewadarProfilePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-800 truncate">{j.jatha_name}</p>
                       <p className="text-xs text-slate-500">{j.destination} · {j.department}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{j.from_date} – {j.to_date}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {j.from_date !== '—' ? new Date(j.from_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        {' – '}
+                        {j.to_date !== '—' ? new Date(j.to_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </p>
                     </div>
                     <Badge
                       variant={j.nr_status === 'issued' ? 'maroon' : j.nr_status === 'approved' ? 'green' : 'gray'}

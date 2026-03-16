@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ChevronLeft, CheckCircle, XCircle, Edit2, Send,
-  FileText, Star, Info, Download, Loader
+  FileText, Star, Info, Download, ThumbsUp, ThumbsDown, Award,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { generateNRPDF } from '@/lib/nrPDF'
@@ -36,6 +36,7 @@ interface NRDetail {
   approved_at:             string | null
   sewa_schedule_id:        number | null
   aso_notes:               string | null
+  centre_notes:            string | null
 }
 
 interface NRMember {
@@ -51,6 +52,8 @@ interface NRMember {
   department:          string | null
   is_jathedar:         boolean
   contributing_centre: string
+  member_type:         'sewadar' | 'sangat'
+  aadhaar_masked:      string | null
 }
 
 interface SectionStatus {
@@ -64,9 +67,10 @@ interface Review {
   id:           number
   author_badge: string
   author_role:  string
-  author_name:  string
-  comment:      string
+  comment_text: string
+  is_resolved:  boolean
   created_at:   string
+  sewadars:     { name: string } | null
 }
 
 const STATUS_CONFIG: Record<string, { variant: 'gray'|'navy'|'green'|'maroon'|'red'|'gold'; label: string }> = {
@@ -89,23 +93,28 @@ export default function NRDetailPage() {
   const { id }   = useParams<{ id: string }>()
   const { user } = useAuth()
 
-  const [nr,        setNR]       = useState<NRDetail | null>(null)
-  const [members,   setMembers]  = useState<NRMember[]>([])
-  const [sections,  setSections] = useState<SectionStatus[]>([])
-  const [reviews,   setReviews]  = useState<Review[]>([])
-  const [loading,   setLoading]  = useState(true)
-  const [comment,   setComment]  = useState('')
-  const [posting,   setPosting]  = useState(false)
+  const [nr,          setNR]         = useState<NRDetail | null>(null)
+  const [members,     setMembers]    = useState<NRMember[]>([])
+  const [sections,    setSections]   = useState<SectionStatus[]>([])
+  const [reviews,     setReviews]    = useState<Review[]>([])
+  const [loading,     setLoading]    = useState(true)
+  const [comment,     setComment]    = useState('')
+  const [posting,     setPosting]    = useState(false)
   const [rejectReason, setRejectReason] = useState('')
   const [showReject,   setShowReject]   = useState(false)
   const [rejectType,   setRejectType]   = useState<'aso'|'centre'>('aso')
   const [acting,       setActing]       = useState(false)
   const [pdfLoading,   setPdfLoading]   = useState(false)
-  const [activeTab,    setActiveTab]    = useState<'members'|'comments'>('members')
+  const [activeTab,    setActiveTab]    = useState<'members'|'comments'|'notes'>('members')
+  // Notes editing
+  const [editingNotes,  setEditingNotes]  = useState<'aso'|'centre'|null>(null)
+  const [asoNotesVal,   setAsoNotesVal]   = useState('')
+  const [centreNotesVal,setCentreNotesVal] = useState('')
+  const [savingNotes,   setSavingNotes]   = useState(false)
 
-  const isASO        = user?.role === 'aso'
-  const isOwner      = nr && (isASO || user?.centre === nr.centre)
-  const isSubContrib = nr && !isOwner && user?.centre !== nr.centre
+  const isASO          = user?.role === 'aso'
+  const isOwner        = nr && (isASO || user?.centre === nr.centre)
+  const isSubContrib   = nr && !isOwner && user?.centre !== nr.centre
   const isParentCentre = !isASO && nr?.is_sub_centre && nr?.parent_centre === user?.centre
 
   const mySection     = sections.find(s => s.centre === user?.centre)
@@ -119,58 +128,123 @@ export default function NRDetailPage() {
     setLoading(true)
     try {
       const { data: nrData, error: nrErr } = await supabase
-        .from('v_nr_summary').select('*').eq('id', id).single()
-      if (nrErr) { console.error('NR fetch:', nrErr); setLoading(false); return }
+        .from('v_nr_summary')
+        .select('*')
+        .eq('id', id)
+        .single()
 
+      if (nrErr || !nrData) { console.error('NR fetch:', nrErr); setLoading(false); return }
+
+      // Fetch extra fields not in view
       const { data: extra } = await supabase
-        .from('nominal_roles').select('aso_notes').eq('id', id).single()
+        .from('nominal_roles')
+        .select('aso_notes, centre_notes')
+        .eq('id', id)
+        .single()
 
-      setNR({ ...nrData, aso_notes: extra?.aso_notes ?? null } as NRDetail)
+      const fullNR = { ...nrData, aso_notes: extra?.aso_notes ?? null, centre_notes: extra?.centre_notes ?? null } as NRDetail
+      setNR(fullNR)
+      setAsoNotesVal(fullNR.aso_notes ?? '')
+      setCentreNotesVal(fullNR.centre_notes ?? '')
 
       const [mRes, rRes, sRes] = await Promise.all([
-        supabase.from('nr_members').select('*').eq('nominal_role_id', id)
-          .order('contributing_centre').order('gender').order('name'),
-        supabase.from('nr_reviews').select('*').eq('nominal_role_id', id).order('created_at'),
-        supabase.from('nr_section_status').select('*').eq('nominal_role_id', id).order('centre'),
+        supabase.from('nr_members')
+          .select('id,serial_no,display_id,name,father_name,gender,age,address,mobile,department,is_jathedar,contributing_centre,member_type,aadhaar_masked')
+          .eq('nominal_role_id', id)
+          .order('contributing_centre')
+          .order('gender')
+          .order('name'),
+        // FIX: use correct column name + join for author name
+        supabase.from('nr_reviews')
+          .select('id, author_badge, author_role, comment_text, is_resolved, created_at, sewadars!nr_reviews_author_badge_fkey(name)')
+          .eq('nominal_role_id', id)
+          .order('created_at'),
+        supabase.from('nr_section_status')
+          .select('centre, srs_id, is_ready, member_count')
+          .eq('nominal_role_id', id)
+          .order('centre'),
       ])
+
       setMembers((mRes.data ?? []) as NRMember[])
       setReviews((rRes.data ?? []) as Review[])
       setSections((sRes.data ?? []) as SectionStatus[])
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
+  // FIX: use correct column name `comment_text`; don't insert non-existent `author_name`
   const postComment = async () => {
     if (!user || !comment.trim() || !id) return
     setPosting(true)
     try {
-      await supabase.from('nr_reviews').insert({
+      const { error } = await supabase.from('nr_reviews').insert({
         nominal_role_id: parseInt(id),
-        author_badge: user.badge_number,
-        author_role:  user.role,
-        author_name:  user.name,
-        comment:      comment.trim(),
+        author_badge:    user.badge_number,
+        author_role:     user.role,
+        comment_text:    comment.trim(),
       })
+      if (error) throw error
       setComment('')
       await fetchAll()
-    } finally { setPosting(false) }
+    } catch (err: any) {
+      console.error('Post comment error:', err)
+    } finally {
+      setPosting(false)
+    }
   }
 
+  // FIX: log every status action
   const doAction = async (status: string, extra: Record<string,unknown> = {}) => {
-    if (!id) return
+    if (!id || !user) return
     setActing(true)
     try {
-      await supabase.from('nominal_roles').update({ status, ...extra }).eq('id', id)
-      setShowReject(false); setRejectReason('')
+      const { error } = await supabase
+        .from('nominal_roles')
+        .update({ status, ...extra })
+        .eq('id', id)
+      if (error) throw error
+
+      // Audit log
+      await supabase.from('logs').insert({
+        user_badge: user.badge_number,
+        user_role:  user.role,
+        action:     `NR_${status.toUpperCase()}`,
+        table_name: 'nominal_roles',
+        record_id:  id,
+        details:    { previous_status: nr?.status, new_status: status, ...extra },
+      })
+
+      setShowReject(false)
+      setRejectReason('')
       await fetchAll()
-    } finally { setActing(false) }
+    } catch (err: any) {
+      console.error('doAction error:', err)
+    } finally {
+      setActing(false)
+    }
+  }
+
+  const saveNotes = async (type: 'aso' | 'centre') => {
+    if (!id || !user) return
+    setSavingNotes(true)
+    try {
+      const field = type === 'aso' ? 'aso_notes' : 'centre_notes'
+      const value = type === 'aso' ? asoNotesVal : centreNotesVal
+      await supabase.from('nominal_roles').update({ [field]: value || null }).eq('id', id)
+      setNR(prev => prev ? { ...prev, [field]: value || null } : prev)
+      setEditingNotes(null)
+    } finally {
+      setSavingNotes(false)
+    }
   }
 
   const handleDownloadPDF = async () => {
     if (!nr || !id) return
     setPdfLoading(true)
     try {
-      // Build sections with their members
-      const sectionData = contributingCentresForPDF().map(centre => {
+      const centreOrder = contributingCentresForPDF()
+      const sectionData = centreOrder.map(centre => {
         const sec = sections.find(s => s.centre === centre)
         const centreMembers = members
           .filter(m => m.contributing_centre === centre)
@@ -195,6 +269,8 @@ export default function NRDetailPage() {
             mobile:              m.mobile,
             is_jathedar:         m.is_jathedar,
             contributing_centre: m.contributing_centre,
+            member_type:         m.member_type,
+            aadhaar_masked:      m.aadhaar_masked,
           })),
         }
       })
@@ -231,6 +307,8 @@ export default function NRDetailPage() {
           mobile:              jathedarMember.mobile,
           is_jathedar:         true,
           contributing_centre: jathedarMember.contributing_centre,
+          member_type:         jathedarMember.member_type,
+          aadhaar_masked:      jathedarMember.aadhaar_masked,
         } : null,
       })
     } catch (err: any) {
@@ -241,7 +319,6 @@ export default function NRDetailPage() {
     }
   }
 
-  // Helper used by PDF and member table
   const contributingCentresForPDF = () =>
     Array.from(new Set(members.map(m => m.contributing_centre)))
       .sort((a, b) => {
@@ -265,8 +342,8 @@ export default function NRDetailPage() {
 
   const cfg           = STATUS_CONFIG[nr.status] ?? STATUS_CONFIG.draft
   const vehicleLabels = getVehicleLabels(nr.vehicle_type)
+  const contributingCentres = contributingCentresForPDF()
 
-  // ASO can edit anytime before issued; owner can edit in draft/rejected
   const canEdit = isASO
     ? !['issued'].includes(nr.status)
     : ['draft', 'centre_rejected', 'rejected'].includes(nr.status)
@@ -275,8 +352,7 @@ export default function NRDetailPage() {
   const showASOIssue      = isASO && nr.status === 'approved'
   const showCentreActions = isParentCentre && nr.status === 'submitted_to_centre'
 
-  // Centres ordered: owner first, then alphabetical
-  const contributingCentres = contributingCentresForPDF()
+  const hasNotes = (nr.aso_notes && nr.aso_notes.trim()) || (nr.centre_notes && nr.centre_notes.trim())
 
   return (
     <div className="max-w-4xl mx-auto space-y-4">
@@ -316,7 +392,7 @@ export default function NRDetailPage() {
         </div>
       )}
 
-      {/* NR Header Info — NO SRS ID here (each centre has different one) */}
+      {/* NR Header info */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <div>
@@ -333,7 +409,7 @@ export default function NRDetailPage() {
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide">Total Members</p>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wide">Members</p>
             <p className="font-semibold text-slate-800">{nr.member_count}</p>
             <p className="text-[10px] text-slate-500">M:{nr.male_count} F:{nr.female_count}</p>
           </div>
@@ -348,7 +424,6 @@ export default function NRDetailPage() {
           )}
         </div>
 
-        {/* Jathedar */}
         {nr.jathedar_name && (
           <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 flex items-center gap-2">
             <Star size={14} className="text-amber-500 fill-amber-400 flex-shrink-0" />
@@ -359,7 +434,6 @@ export default function NRDetailPage() {
           </div>
         )}
 
-        {/* Vehicle */}
         {nr.vehicle_type && (
           <div className="bg-slate-50 rounded-lg p-3">
             <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Transport</p>
@@ -371,16 +445,21 @@ export default function NRDetailPage() {
           </div>
         )}
 
-        {/* Rejections */}
         {nr.status === 'rejected' && nr.rejection_reason && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
             <p className="text-[10px] text-red-500 font-semibold uppercase tracking-wide mb-1">Rejected by HQ</p>
             <p className="text-sm text-red-700">{nr.rejection_reason}</p>
           </div>
         )}
+        {nr.status === 'centre_rejected' && nr.centre_rejection_reason && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-[10px] text-red-500 font-semibold uppercase tracking-wide mb-1">Rejected by Centre</p>
+            <p className="text-sm text-red-700">{nr.centre_rejection_reason}</p>
+          </div>
+        )}
       </div>
 
-      {/* Section status — owner/ASO view */}
+      {/* Section status */}
       {(isOwner || isASO) && sections.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100">
@@ -420,19 +499,19 @@ export default function NRDetailPage() {
           <button onClick={() => doAction('centre_approved', { centre_approved_at: new Date().toISOString() })}
             disabled={acting}
             className="py-3 bg-green-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
-            <CheckCircle size={15} /> Approve
+            <ThumbsUp size={15} /> Approve
           </button>
           <button onClick={() => { setRejectType('centre'); setShowReject(true) }}
             disabled={acting}
             className="py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
-            <XCircle size={15} /> Reject
+            <ThumbsDown size={15} /> Reject
           </button>
         </div>
       )}
 
       {showASOActions && (
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => doAction('approved', { approved_at: new Date().toISOString() })}
+          <button onClick={() => doAction('approved', { approved_at: new Date().toISOString(), approved_by: user?.badge_number })}
             disabled={acting}
             className="py-3 bg-green-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
             <CheckCircle size={15} /> Approve
@@ -449,27 +528,23 @@ export default function NRDetailPage() {
         <button onClick={() => doAction('issued', { issued_at: new Date().toISOString() })}
           disabled={acting}
           className="w-full py-3 bg-maroon-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
-          <FileText size={15} /> Issue NR
+          <Award size={15} /> Issue NR
         </button>
       )}
 
-      {/* Edit button */}
       {canEdit && (
         <Link to={`/nominal-roles/${nr.id}/edit`}>
           <button className="w-full py-3 border border-maroon-200 text-maroon-700 rounded-xl text-sm font-semibold active:scale-95 touch-manipulation flex items-center justify-center gap-2">
             <Edit2 size={14} />
-            {isSubContrib ? `Add / Edit My Members (${user?.centre})` : isASO ? 'Edit NR (ASO)' : 'Edit NR'}
+            {isSubContrib ? `Add / Edit My Members (${user?.centre})` :
+             isASO ? 'Edit NR (ASO)' : 'Edit NR'}
           </button>
         </Link>
       )}
 
-      {/* Download PDF button — visible to owner and ASO */}
       {(isOwner || isASO) && members.length > 0 && (
-        <button
-          onClick={handleDownloadPDF}
-          disabled={pdfLoading}
-          className="w-full py-3 bg-navy-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2"
-        >
+        <button onClick={handleDownloadPDF} disabled={pdfLoading}
+          className="w-full py-3 bg-navy-600 text-white rounded-xl text-sm font-semibold active:scale-95 touch-manipulation disabled:opacity-50 flex items-center justify-center gap-2">
           {pdfLoading
             ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating PDF...</>
             : <><Download size={15} /> Download NR (PDF)</>
@@ -482,6 +557,7 @@ export default function NRDetailPage() {
         {[
           { key: 'members',  label: `Members (${members.length})` },
           { key: 'comments', label: `Comments (${reviews.length})` },
+          { key: 'notes',    label: `Notes${hasNotes ? ' ●' : ''}` },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key as typeof activeTab)}
             className={['flex-1 py-2 rounded-lg text-xs font-medium transition-all touch-manipulation',
@@ -491,7 +567,7 @@ export default function NRDetailPage() {
         ))}
       </div>
 
-      {/* ── MEMBERS — grouped table by centre ── */}
+      {/* Members tab */}
       {activeTab === 'members' && (
         <div className="space-y-4">
           {members.length === 0 ? (
@@ -522,8 +598,6 @@ export default function NRDetailPage() {
 
               return (
                 <div key={centre} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-
-                  {/* Centre section header */}
                   <div className={`px-4 py-2.5 flex items-center justify-between ${
                     centre === nr.centre ? 'bg-maroon-50' : isMyCentre ? 'bg-navy-50' : 'bg-slate-50'
                   }`}>
@@ -531,8 +605,6 @@ export default function NRDetailPage() {
                       <span className="text-sm font-bold text-slate-800">{centre}</span>
                       {centre === nr.centre && <Badge variant="maroon" className="text-[9px]">Owner</Badge>}
                       {isMyCentre && !isOwner && <Badge variant="navy" className="text-[9px]">My Centre</Badge>}
-
-                      {/* SRS ID prominently in header */}
                       {sec?.srs_id ? (
                         <span className="px-2 py-0.5 bg-white border border-slate-300 rounded-lg text-[10px] font-mono font-semibold text-slate-700">
                           SRS: {sec.srs_id}
@@ -543,7 +615,6 @@ export default function NRDetailPage() {
                         </span>
                       )}
                     </div>
-
                     <div className="flex items-center gap-3 text-[10px] text-slate-500 flex-shrink-0">
                       <span>M:{maleC} F:{femaleC}</span>
                       {(sec?.is_ready || nr.status !== 'draft')
@@ -553,7 +624,6 @@ export default function NRDetailPage() {
                     </div>
                   </div>
 
-                  {/* Table */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
@@ -571,42 +641,36 @@ export default function NRDetailPage() {
                       <tbody className="divide-y divide-slate-100">
                         {centreMembers.map((m, idx) => (
                           <tr key={m.id} className={
-                            m.is_jathedar
-                              ? 'bg-amber-50'
-                              : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+                            m.is_jathedar ? 'bg-amber-50' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                           }>
                             <td className="px-3 py-2 text-slate-400 text-center">
                               {m.is_jathedar ? '★' : idx + 1}
                             </td>
                             <td className="px-3 py-2 font-mono text-slate-600 text-[11px]">
-                              {m.display_id}
+                              {/* Show masked aadhaar for sangat, badge for sewadars */}
+                              {m.member_type === 'sangat' && m.aadhaar_masked
+                                ? m.aadhaar_masked
+                                : m.display_id
+                              }
+                              {m.member_type === 'sangat' && (
+                                <span className="block text-[9px] text-navy-500 font-sans">Sangat</span>
+                              )}
                             </td>
                             <td className="px-3 py-2">
                               <p className="font-medium text-slate-800">{m.name}</p>
-                              {m.father_name && (
-                                <p className="text-[10px] text-slate-400">S/o {m.father_name}</p>
-                              )}
-                              {m.is_jathedar && (
-                                <span className="text-[9px] text-amber-600 font-semibold">★ Jathedar</span>
-                              )}
+                              {m.father_name && <p className="text-[10px] text-slate-400">S/o {m.father_name}</p>}
+                              {m.is_jathedar && <span className="text-[9px] text-amber-600 font-semibold">★ Jathedar</span>}
                             </td>
                             <td className="px-3 py-2 text-slate-500 hidden sm:table-cell max-w-[180px]">
                               <p className="truncate">{m.address ?? '—'}</p>
                             </td>
-                            <td className="px-3 py-2 text-center text-slate-600 font-mono">
-                              {m.mobile ?? '—'}
-                            </td>
+                            <td className="px-3 py-2 text-center text-slate-600 font-mono">{m.mobile ?? '—'}</td>
                             <td className="px-3 py-2 text-center">
-                              <Badge
-                                variant={m.gender === 'M' ? 'navy' : 'maroon'}
-                                className="text-[9px]"
-                              >
-                                {m.gender === 'M' ? 'M' : 'F'}
+                              <Badge variant={m.gender === 'M' ? 'navy' : 'maroon'} className="text-[9px]">
+                                {m.gender}
                               </Badge>
                             </td>
-                            <td className="px-3 py-2 text-center text-slate-600">
-                              {m.age ?? '—'}
-                            </td>
+                            <td className="px-3 py-2 text-center text-slate-600">{m.age ?? '—'}</td>
                             <td className="px-3 py-2 text-center font-mono text-[10px] text-slate-500">
                               {sec?.srs_id ?? '—'}
                             </td>
@@ -633,7 +697,6 @@ export default function NRDetailPage() {
             })
           )}
 
-          {/* Grand total */}
           {members.length > 0 && (
             <div className="bg-slate-700 text-white rounded-xl px-4 py-3 flex justify-between text-sm font-semibold">
               <span>Grand Total: {members.length} Members</span>
@@ -654,7 +717,10 @@ export default function NRDetailPage() {
                 {reviews.map(r => (
                   <div key={r.id} className={`px-4 py-3 ${r.author_role === 'aso' ? 'bg-navy-50/30' : ''}`}>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold text-slate-700">{r.author_name}</span>
+                      {/* FIX: use joined name from sewadars */}
+                      <span className="text-xs font-semibold text-slate-700">
+                        {r.sewadars?.name ?? r.author_badge}
+                      </span>
                       <Badge variant={r.author_role === 'aso' ? 'navy' : 'gray'} className="text-[9px]">
                         {r.author_role === 'aso' ? 'ASO/HQ' : 'Centre Admin'}
                       </Badge>
@@ -664,7 +730,8 @@ export default function NRDetailPage() {
                         {new Date(r.created_at).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })}
                       </span>
                     </div>
-                    <p className="text-sm text-slate-700">{r.comment}</p>
+                    {/* FIX: use comment_text not comment */}
+                    <p className="text-sm text-slate-700">{r.comment_text}</p>
                   </div>
                 ))}
               </div>
@@ -682,6 +749,79 @@ export default function NRDetailPage() {
         </div>
       )}
 
+      {/* Notes tab */}
+      {activeTab === 'notes' && (
+        <div className="space-y-3">
+          {/* ASO Notes */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-slate-700">HQ / ASO Notes</h3>
+              {isASO && editingNotes !== 'aso' && (
+                <button onClick={() => setEditingNotes('aso')}
+                  className="text-xs text-maroon-600 underline touch-manipulation">
+                  {nr.aso_notes ? 'Edit' : 'Add'}
+                </button>
+              )}
+            </div>
+            {editingNotes === 'aso' ? (
+              <div className="space-y-2">
+                <textarea value={asoNotesVal} onChange={e => setAsoNotesVal(e.target.value)}
+                  rows={3} placeholder="Internal notes for ASO team..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 resize-none" />
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingNotes(null)}
+                    className="flex-1 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 touch-manipulation">
+                    Cancel
+                  </button>
+                  <button onClick={() => saveNotes('aso')} disabled={savingNotes}
+                    className="flex-1 py-2 bg-maroon-600 text-white rounded-lg text-xs font-semibold touch-manipulation disabled:opacity-50">
+                    {savingNotes ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                {nr.aso_notes || <span className="text-slate-400 italic">No notes</span>}
+              </p>
+            )}
+          </div>
+
+          {/* Centre Notes */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-slate-700">{nr.centre} — Centre Notes</h3>
+              {isOwner && !isASO && editingNotes !== 'centre' && (
+                <button onClick={() => setEditingNotes('centre')}
+                  className="text-xs text-maroon-600 underline touch-manipulation">
+                  {nr.centre_notes ? 'Edit' : 'Add'}
+                </button>
+              )}
+            </div>
+            {editingNotes === 'centre' ? (
+              <div className="space-y-2">
+                <textarea value={centreNotesVal} onChange={e => setCentreNotesVal(e.target.value)}
+                  rows={3} placeholder="Notes for your centre..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-maroon-400 resize-none" />
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingNotes(null)}
+                    className="flex-1 py-2 border border-slate-200 rounded-lg text-xs text-slate-600 touch-manipulation">
+                    Cancel
+                  </button>
+                  <button onClick={() => saveNotes('centre')} disabled={savingNotes}
+                    className="flex-1 py-2 bg-navy-600 text-white rounded-lg text-xs font-semibold touch-manipulation disabled:opacity-50">
+                    {savingNotes ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                {nr.centre_notes || <span className="text-slate-400 italic">No notes</span>}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Reject modal */}
       {showReject && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60">
@@ -690,10 +830,10 @@ export default function NRDetailPage() {
               <XCircle size={22} className="text-red-500" />
             </div>
             <h3 className="text-base font-bold text-slate-800 text-center mb-3">
-              {rejectType === 'centre' ? `Reject (${user?.centre})` : 'Reject NR (ASO)'}
+              {rejectType === 'centre' ? `Reject at Centre` : 'Reject NR (ASO/HQ)'}
             </h3>
             <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
-              placeholder="Reason for rejection..." rows={3}
+              placeholder="Reason for rejection (required)..." rows={3}
               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-red-400 resize-none mb-4" />
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => { setShowReject(false); setRejectReason('') }}
@@ -702,8 +842,14 @@ export default function NRDetailPage() {
               </button>
               <button
                 onClick={() => rejectType === 'centre'
-                  ? doAction('centre_rejected', { centre_rejected_at: new Date().toISOString(), centre_rejection_reason: rejectReason })
-                  : doAction('rejected', { rejected_at: new Date().toISOString(), rejection_reason: rejectReason })
+                  ? doAction('centre_rejected', {
+                      centre_rejected_at: new Date().toISOString(),
+                      centre_rejection_reason: rejectReason,
+                    })
+                  : doAction('rejected', {
+                      rejected_at: new Date().toISOString(),
+                      rejection_reason: rejectReason,
+                    })
                 }
                 disabled={!rejectReason.trim() || acting}
                 className="py-3 rounded-xl bg-red-600 text-white font-semibold text-sm touch-manipulation disabled:opacity-50">
@@ -713,6 +859,7 @@ export default function NRDetailPage() {
           </div>
         </div>
       )}
+
       <div className="pb-4" />
     </div>
   )
