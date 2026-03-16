@@ -88,7 +88,7 @@ const topBd    = () => ({ top: S4, bottom: NO, left: NO, right: NO })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 interface CO { w?: number; bd?: any; va?: any; fill?: string; span?: number; rspan?: number; pad?: any }
-function tc(children: Paragraph[], o: CO = {}): TableCell {
+function tc(children: (Paragraph | Table | any)[], o: CO = {}): TableCell {
   return new TableCell({
     width:         o.w !== undefined ? { size: o.w, type: WidthType.DXA } : undefined,
     borders:       o.bd ?? allBd(),
@@ -97,7 +97,7 @@ function tc(children: Paragraph[], o: CO = {}): TableCell {
     margins:       o.pad ?? { top: 40, bottom: 40, left: 80, right: 80 },
     columnSpan:    o.span,
     rowSpan:       o.rspan,
-    children,
+    children:      children as any,
   })
 }
 
@@ -149,7 +149,7 @@ async function loadLogo(): Promise<ArrayBuffer | null> {
 }
 
 // ─── Sheet builder ────────────────────────────────────────────────────────────
-interface SheetResult { bodyContent: (Paragraph | Table)[]; footerContent: (Paragraph | Table)[] }
+interface SheetResult { bodyContent: any[]; footerContent: any[] }
 
 function buildSheet(
   nr:      NRForWord,
@@ -175,10 +175,10 @@ function buildSheet(
   const LW = 1100, SCI = 1500, TW = CW - LW - SCI
   const headerTable = new Table({
     width: { size: CW, type: WidthType.DXA }, columnWidths: [LW, TW, SCI],
-    borders: { top: NO, bottom: NO, left: NO, right: NO, insideH: NO, insideV: NO },
+    borders: { top: NO, bottom: NO, left: NO, right: NO, insideHorizontal: NO, insideVertical: NO },
     rows: [new TableRow({ children: [
       tc(logo ? [new Paragraph({ spacing: { before: 0, after: 0 }, children: [
-        new ImageRun({ data: logo, transformation: { width: 52, height: 62 }, type: 'png' })
+        new ImageRun({ data: logo, transformation: { width: 52, height: 62 } })
       ]})] : [p('')], { w: LW, bd: noBd(), va: VerticalAlign.CENTER }),
       tc([
         p('SATSANG CENTRES IN INDIA',      { b: true, sz: 28, align: AlignmentType.CENTER }),
@@ -203,7 +203,7 @@ function buildSheet(
 
   const infoTable = new Table({
     width: { size: CW, type: WidthType.DXA }, columnWidths: IC,
-    borders: { top: NO, bottom: NO, left: NO, right: NO, insideH: NO, insideV: NO },
+    borders: { top: NO, bottom: NO, left: NO, right: NO, insideHorizontal: NO, insideVertical: NO },
     rows: [
       infoRow('Name of Satsang Place', place,                'Area : FARIDABAD',      'ZONE - III'),
       infoRow('Name of Jathedar',      nr.jathedar_name??'', drvLbl,                  drvVal),
@@ -313,7 +313,7 @@ function buildSheet(
 
   const jathSub = new Table({
     width: { size: JW, type: WidthType.DXA }, columnWidths: [JLC, JVC],
-    borders: { top: NO, bottom: NO, left: NO, right: NO, insideH: NO, insideV: NO },
+    borders: { top: NO, bottom: NO, left: NO, right: NO, insideHorizontal: NO, insideVertical: NO },
     rows: [
       { label: 'Sign of Jathedar', val: ''                     },
       { label: 'Name',             val: nr.jathedar_name ?? '' },
@@ -326,7 +326,7 @@ function buildSheet(
 
   const secSub = new Table({
     width: { size: SW, type: WidthType.DXA }, columnWidths: [SW],
-    borders: { top: NO, bottom: NO, left: NO, right: NO, insideH: NO, insideV: NO },
+    borders: { top: NO, bottom: NO, left: NO, right: NO, insideHorizontal: NO, insideVertical: NO },
     rows: [
       new TableRow({ children: [tc([p('')], { w: SW, bd: botBd(), pad: { top: 60, bottom: 60, left: 80, right: 80 } })] }),
       new TableRow({ children: [tc([p('Secretary / Area Secretary', { sz: 20, align: AlignmentType.CENTER })], { w: SW, bd: noBd() })] }),
@@ -336,11 +336,11 @@ function buildSheet(
 
   const sigTable = new Table({
     width: { size: CW, type: WidthType.DXA }, columnWidths: [JW, GW, SW],
-    borders: { top: NO, bottom: NO, left: NO, right: NO, insideH: NO, insideV: NO },
+    borders: { top: NO, bottom: NO, left: NO, right: NO, insideHorizontal: NO, insideVertical: NO },
     rows: [new TableRow({ children: [
-      tc([jathSub], { w: JW, bd: noBd(), va: VerticalAlign.TOP }),
-      tc([p('')],    { w: GW, bd: noBd() }),
-      tc([secSub],  { w: SW,  bd: noBd(), va: VerticalAlign.TOP }),
+      tc([jathSub] as any, { w: JW, bd: noBd(), va: VerticalAlign.TOP }),
+      tc([p('')],           { w: GW, bd: noBd() }),
+      tc([secSub]  as any, { w: SW,  bd: noBd(), va: VerticalAlign.TOP }),
     ]})],
   })
 
@@ -362,7 +362,7 @@ function buildSheet(
 
   const arrTable = new Table({
     width: { size: CW, type: WidthType.DXA }, columnWidths: AC,
-    borders: { top: NO, bottom: NO, left: NO, right: NO, insideH: NO, insideV: NO },
+    borders: { top: NO, bottom: NO, left: NO, right: NO, insideHorizontal: NO, insideVertical: NO },
     rows: [
       arrRow('Arrival Date & Time',   fdFull(nr.from_date, arrTime)),
       arrRow('Departure Date & Time', fdFull(nr.to_date,   depTime)),
@@ -375,8 +375,8 @@ function buildSheet(
     children:[new TextRun({ text: '', size: 4 })],
   })
 
-  const bodyContent:   (Paragraph | Table)[] = [headerTable, gap(80), infoTable, gap(80), durTable, gap(40), memberTable]
-  const footerContent: (Paragraph | Table)[] = [gap(120), sigTable, divider, arrTable, divider2]
+  const bodyContent: any[] = [headerTable, gap(80), infoTable, gap(80), durTable, gap(40), memberTable]
+  const footerContent: any[] = [gap(120), sigTable, divider, arrTable, divider2]
 
   return { bodyContent, footerContent }
 }
@@ -417,9 +417,6 @@ export async function generateNRDocx(opts: GenerateWordOptions): Promise<void> {
     sections: docSections,
   })
 
-  const buf  = await Packer.toBuffer(doc)
-  const blob = new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  })
+  const blob = await Packer.toBlob(doc)
   saveAs(blob, `${(nr.jatha_name ?? 'NR').replace(/[^a-zA-Z0-9_\- ]/g,'').replace(/\s+/g,'_')}_NR.docx`)
 }
