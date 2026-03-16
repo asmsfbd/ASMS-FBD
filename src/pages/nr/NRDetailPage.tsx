@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, CheckCircle, XCircle, Edit2, Send, FileText, AlertTriangle, Star } from 'lucide-react'
+import { ChevronLeft, CheckCircle, XCircle, Edit2, Send, FileText, Star, Info } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/index'
@@ -35,17 +35,25 @@ interface NRDetail {
 }
 
 interface NRMember {
-  id:          number
-  serial_no:   number
-  display_id:  string
-  name:        string
-  father_name: string | null
-  gender:      string
-  age:         number | null
-  address:     string | null
-  mobile:      string | null
-  department:  string | null
-  is_jathedar: boolean
+  id:                  number
+  serial_no:           number
+  display_id:          string
+  name:                string
+  father_name:         string | null
+  gender:              string
+  age:                 number | null
+  address:             string | null
+  mobile:              string | null
+  department:          string | null
+  is_jathedar:         boolean
+  contributing_centre: string
+}
+
+interface SectionStatus {
+  centre:       string
+  srs_id:       string | null
+  is_ready:     boolean
+  member_count: number
 }
 
 interface Review {
@@ -68,32 +76,36 @@ const STATUS_CONFIG: Record<string, { variant: 'gray'|'navy'|'green'|'maroon'|'r
   issued:              { variant: 'maroon', label: 'Issued' },
 }
 
-// Dynamic labels based on vehicle type
 function getVehicleLabels(vehicleType: string | null) {
-  if (vehicleType === 'Train') {
-    return { nameLabel: 'Train Name', mobileLabel: 'Train Time' }
-  }
-  return { nameLabel: 'Driver Name', mobileLabel: 'Driver Mobile' }
+  if (vehicleType === 'Train') return { nameLabel: 'Train Name', mobileLabel: 'Train Time', icon: '🚂' }
+  return { nameLabel: 'Driver Name', mobileLabel: 'Driver Mobile', icon: '🚌' }
 }
 
 export default function NRDetailPage() {
   const { id }   = useParams<{ id: string }>()
   const { user } = useAuth()
 
-  const [nr,           setNR]          = useState<NRDetail | null>(null)
-  const [members,      setMembers]     = useState<NRMember[]>([])
-  const [reviews,      setReviews]     = useState<Review[]>([])
-  const [loading,      setLoading]     = useState(true)
-  const [comment,      setComment]     = useState('')
-  const [posting,      setPosting]     = useState(false)
+  const [nr,        setNR]       = useState<NRDetail | null>(null)
+  const [members,   setMembers]  = useState<NRMember[]>([])
+  const [sections,  setSections] = useState<SectionStatus[]>([])
+  const [reviews,   setReviews]  = useState<Review[]>([])
+  const [loading,   setLoading]  = useState(true)
+  const [comment,   setComment]  = useState('')
+  const [posting,   setPosting]  = useState(false)
   const [rejectReason, setRejectReason] = useState('')
-  const [showReject,   setShowReject]  = useState(false)
-  const [rejectType,   setRejectType]  = useState<'aso'|'centre'>('aso')
-  const [acting,       setActing]      = useState(false)
-  const [activeTab,    setActiveTab]   = useState<'members'|'comments'>('members')
+  const [showReject,   setShowReject]   = useState(false)
+  const [rejectType,   setRejectType]   = useState<'aso'|'centre'>('aso')
+  const [acting,       setActing]       = useState(false)
+  const [activeTab,    setActiveTab]    = useState<'members'|'comments'>('members')
 
-  const isASO         = user?.role === 'aso'
+  const isASO          = user?.role === 'aso'
+  const isOwner        = nr && (isASO || user?.centre === nr.centre)
+  const isSubContrib   = nr && !isOwner && user?.centre !== nr.centre  // sub-centre contributor
   const isParentCentre = !isASO && nr?.is_sub_centre && nr?.parent_centre === user?.centre
+
+  // My section status
+  const mySection      = sections.find(s => s.centre === user?.centre)
+  const myMemberCount  = members.filter(m => m.contributing_centre === user?.centre).length
 
   useEffect(() => { if (id && user) fetchAll() }, [id, user])
 
@@ -101,31 +113,25 @@ export default function NRDetailPage() {
     if (!id) return
     setLoading(true)
     try {
-      // Use select=* only — no duplicate columns
       const { data: nrData, error: nrErr } = await supabase
-        .from('v_nr_summary')
-        .select('*')
-        .eq('id', id)
-        .single()
-
+        .from('v_nr_summary').select('*').eq('id', id).single()
       if (nrErr) { console.error('NR fetch:', nrErr); setLoading(false); return }
 
-      // Fetch aso_notes separately (not in view)
       const { data: extra } = await supabase
-        .from('nominal_roles')
-        .select('aso_notes')
-        .eq('id', id)
-        .single()
+        .from('nominal_roles').select('aso_notes').eq('id', id).single()
 
       setNR({ ...nrData, aso_notes: extra?.aso_notes ?? null } as NRDetail)
 
-      const [mRes, rRes] = await Promise.all([
+      const [mRes, rRes, sRes] = await Promise.all([
         supabase.from('nr_members').select('*').eq('nominal_role_id', id)
-          .order('is_jathedar', { ascending: false }).order('gender').order('name'),
+          .order('is_jathedar', { ascending: false }).order('contributing_centre').order('gender').order('name'),
         supabase.from('nr_reviews').select('*').eq('nominal_role_id', id).order('created_at'),
+        supabase.from('nr_section_status').select('*').eq('nominal_role_id', id).order('centre'),
       ])
+
       setMembers((mRes.data ?? []) as NRMember[])
       setReviews((rRes.data ?? []) as Review[])
+      setSections((sRes.data ?? []) as SectionStatus[])
     } finally { setLoading(false) }
   }
 
@@ -169,14 +175,24 @@ export default function NRDetailPage() {
     </div>
   )
 
-  const cfg             = STATUS_CONFIG[nr.status] ?? STATUS_CONFIG.draft
-  const maleCount       = members.filter(m => m.gender === 'M').length
-  const femaleCount     = members.filter(m => m.gender === 'F').length
-  const vehicleLabels   = getVehicleLabels(nr.vehicle_type)
-  const canEdit         = ['draft','centre_rejected','rejected'].includes(nr.status) || isASO
-  const showASOActions  = isASO && nr.status === 'submitted'
-  const showASOIssue    = isASO && nr.status === 'approved'
+  const cfg           = STATUS_CONFIG[nr.status] ?? STATUS_CONFIG.draft
+  const vehicleLabels = getVehicleLabels(nr.vehicle_type)
+  const canEdit       = ['draft','centre_rejected','rejected'].includes(nr.status) || isASO
+  const showASOActions   = isASO && nr.status === 'submitted'
+  const showASOIssue     = isASO && nr.status === 'approved'
   const showCentreActions = isParentCentre && nr.status === 'submitted_to_centre'
+
+  // Get unique contributing centres for grouped display
+  const contributingCentres = Array.from(new Set(members.map(m => m.contributing_centre)))
+    .sort((a, b) => {
+      // Owner centre first
+      if (a === nr.centre) return -1
+      if (b === nr.centre) return 1
+      return a.localeCompare(b)
+    })
+
+  // My section SRS ID
+  const mySrsId = mySection?.srs_id ?? null
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
@@ -190,13 +206,35 @@ export default function NRDetailPage() {
           <h1 className="text-base font-semibold text-slate-800 truncate">{nr.jatha_name ?? 'Nominal Role'}</h1>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-xs text-slate-400">{nr.centre}</p>
-            {nr.is_sub_centre && nr.parent_centre && (
-              <Badge variant="navy" className="text-[9px]">Sub of {nr.parent_centre}</Badge>
+            {isSubContrib && (
+              <Badge variant="navy" className="text-[9px]">Contributing: {user?.centre}</Badge>
             )}
           </div>
         </div>
         <Badge variant={cfg.variant} className="text-[10px] flex-shrink-0">{cfg.label}</Badge>
       </div>
+
+      {/* Sub-centre contribution banner */}
+      {isSubContrib && nr.status === 'draft' && (
+        <div className="bg-navy-50 border border-navy-200 rounded-xl px-4 py-3 flex items-start gap-2">
+          <Info size={14} className="text-navy-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-navy-700">
+              {user?.centre} — Your Section
+            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-[10px] text-navy-500">
+                {myMemberCount} member{myMemberCount !== 1 ? 's' : ''} added
+                {mySection?.srs_id && ` · SRS: ${mySection.srs_id}`}
+              </p>
+              {mySection?.is_ready
+                ? <Badge variant="green" className="text-[9px]">✓ Marked Ready</Badge>
+                : <Badge variant="gray" className="text-[9px]">Not yet ready</Badge>
+              }
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* NR Info card */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
@@ -213,14 +251,29 @@ export default function NRDetailPage() {
               {nr.to_date && new Date(nr.to_date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
             </p>
           </div>
+
+          {/* SRS ID: show owner's for owner/ASO, show my section SRS for sub-centre */}
           <div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide">SRS ID</p>
-            <p className="font-mono font-semibold text-slate-800">{nr.srs_id ?? '—'}</p>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+              {isSubContrib ? `SRS ID (${user?.centre})` : 'SRS ID'}
+            </p>
+            <p className="font-mono font-semibold text-slate-800">
+              {isSubContrib ? (mySrsId ?? '—') : (nr.srs_id ?? '—')}
+            </p>
           </div>
+
           <div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wide">Members</p>
-            <p className="font-medium text-slate-800">{nr.member_count} · M:{maleCount} F:{femaleCount}</p>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+              {isSubContrib ? 'My Members' : 'Total Members'}
+            </p>
+            <p className="font-medium text-slate-800">
+              {isSubContrib
+                ? `${myMemberCount} added`
+                : `${nr.member_count} · M:${nr.male_count} F:${nr.female_count}`
+              }
+            </p>
           </div>
+
           {nr.quota > 0 && (
             <div>
               <p className="text-[10px] text-slate-400 uppercase tracking-wide">Quota</p>
@@ -242,40 +295,61 @@ export default function NRDetailPage() {
           </div>
         )}
 
-        {/* Vehicle info — dynamic labels */}
+        {/* Vehicle */}
         {nr.vehicle_type && (
           <div className="bg-slate-50 rounded-lg p-3">
             <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-1">Transport</p>
-            <div className="flex gap-4 text-xs text-slate-600">
-              <span>🚌 {nr.vehicle_type}</span>
-              {nr.driver_name && (
-                <span>{vehicleLabels.nameLabel}: <strong>{nr.driver_name}</strong></span>
-              )}
-              {nr.driver_mobile && (
-                <span>{vehicleLabels.mobileLabel}: <strong>{nr.driver_mobile}</strong></span>
-              )}
+            <div className="flex gap-4 text-xs text-slate-600 flex-wrap">
+              <span>{vehicleLabels.icon} {nr.vehicle_type}</span>
+              {nr.driver_name && <span>{vehicleLabels.nameLabel}: <strong>{nr.driver_name}</strong></span>}
+              {nr.driver_mobile && <span>{vehicleLabels.mobileLabel}: <strong>{nr.driver_mobile}</strong></span>}
             </div>
           </div>
         )}
 
-        {/* Rejection reasons */}
+        {/* Rejection */}
         {nr.status === 'rejected' && nr.rejection_reason && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
             <p className="text-[10px] text-red-500 font-semibold uppercase tracking-wide mb-1">Rejected by HQ</p>
             <p className="text-sm text-red-700">{nr.rejection_reason}</p>
           </div>
         )}
-        {nr.status === 'centre_rejected' && nr.centre_rejection_reason && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="text-[10px] text-red-500 font-semibold uppercase tracking-wide mb-1">
-              Rejected by {nr.parent_centre}
-            </p>
-            <p className="text-sm text-red-700">{nr.centre_rejection_reason}</p>
-          </div>
-        )}
       </div>
 
-      {/* CENTRE ADMIN action buttons (for sub-centre NRs) */}
+      {/* Section status overview (owner sees all sections) */}
+      {isOwner && sections.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-700">
+              Section Status
+              <span className="text-slate-400 font-normal ml-1 text-xs">
+                ({sections.filter(s => s.is_ready).length}/{sections.length} ready)
+              </span>
+            </h3>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {sections.map(s => (
+              <div key={s.centre} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-medium text-slate-700">{s.centre}</p>
+                    {s.centre === nr.centre && <Badge variant="maroon" className="text-[9px]">Owner</Badge>}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    {s.member_count} members{s.srs_id ? ` · SRS: ${s.srs_id}` : ''}
+                  </p>
+                </div>
+                {s.is_ready
+                  ? <Badge variant="green" className="text-[9px]">✓ Ready</Badge>
+                  : <Badge variant="gray" className="text-[9px]">Pending</Badge>
+                }
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Parent centre actions (for sub-centre NRs) */}
       {showCentreActions && (
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => doAction('centre_approved', { centre_approved_at: new Date().toISOString() })}
@@ -291,7 +365,7 @@ export default function NRDetailPage() {
         </div>
       )}
 
-      {/* ASO action buttons */}
+      {/* ASO actions */}
       {showASOActions && (
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => doAction('approved', { approved_at: new Date().toISOString() })}
@@ -315,11 +389,12 @@ export default function NRDetailPage() {
         </button>
       )}
 
-      {/* Edit button */}
+      {/* Edit/Add Members button */}
       {canEdit && (
         <Link to={`/nominal-roles/${nr.id}/edit`}>
           <button className="w-full py-3 border border-maroon-200 text-maroon-700 rounded-xl text-sm font-semibold active:scale-95 touch-manipulation flex items-center justify-center gap-2">
-            <Edit2 size={14} /> Edit NR
+            <Edit2 size={14} />
+            {isSubContrib ? `Add / Edit My Members (${user?.centre})` : 'Edit NR'}
           </button>
         </Link>
       )}
@@ -338,35 +413,76 @@ export default function NRDetailPage() {
         ))}
       </div>
 
-      {/* Members tab */}
+      {/* Members tab — grouped by contributing centre */}
       {activeTab === 'members' && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           {members.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">No members</div>
+            <div className="py-10 text-center">
+              <p className="text-sm text-slate-400">No members added yet</p>
+              {canEdit && (
+                <Link to={`/nominal-roles/${nr.id}/edit`}>
+                  <button className="mt-3 px-4 py-2 bg-maroon-600 text-white rounded-xl text-xs font-semibold touch-manipulation">
+                    {isSubContrib ? 'Add My Members' : 'Add Members'}
+                  </button>
+                </Link>
+              )}
+            </div>
           ) : (
-            <div className="divide-y divide-slate-50">
-              {members.map((m, idx) => (
-                <div key={m.id} className={`flex items-center gap-3 px-4 py-3 ${m.is_jathedar ? 'bg-amber-50/40' : ''}`}>
-                  <span className="text-[10px] text-slate-300 w-6 text-right flex-shrink-0">{idx + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-slate-800 truncate">{m.name}</p>
-                      <Badge variant={m.gender === 'M' ? 'navy' : 'maroon'} className="text-[9px] flex-shrink-0">{m.gender}</Badge>
-                      {m.is_jathedar && <Badge variant="gold" className="text-[9px] flex-shrink-0">★ Jathedar</Badge>}
+            <>
+              {contributingCentres.map(centre => {
+                const centreMembers = members.filter(m => m.contributing_centre === centre)
+                const sec = sections.find(s => s.centre === centre)
+                const isMyCentre = centre === user?.centre
+                return (
+                  <div key={centre}>
+                    {/* Centre section header */}
+                    <div className={`px-4 py-2 border-b border-slate-100 flex items-center justify-between ${
+                      isMyCentre ? 'bg-navy-50' : 'bg-slate-50'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-700">{centre}</span>
+                        {centre === nr.centre && <Badge variant="maroon" className="text-[9px]">Owner</Badge>}
+                        {isMyCentre && !isOwner && <Badge variant="navy" className="text-[9px]">My Centre</Badge>}
+                        {sec?.srs_id && (
+                          <span className="text-[10px] font-mono text-slate-500">SRS: {sec.srs_id}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-500">
+                          {centreMembers.length} · M:{centreMembers.filter(m=>m.gender==='M').length} F:{centreMembers.filter(m=>m.gender==='F').length}
+                        </span>
+                        {sec?.is_ready
+                          ? <Badge variant="green" className="text-[9px]">✓ Ready</Badge>
+                          : <Badge variant="gray" className="text-[9px]">Pending</Badge>
+                        }
+                      </div>
                     </div>
-                    <p className="text-[10px] text-slate-400 font-mono">{m.display_id}</p>
-                    <p className="text-[10px] text-slate-400">{m.father_name ?? '—'} · Age {m.age ?? '—'}</p>
-                    {m.address && <p className="text-[10px] text-slate-400 truncate">{m.address}</p>}
+
+                    {/* Members in this section */}
+                    {centreMembers.map((m, idx) => (
+                      <div key={m.id} className={`flex items-center gap-3 px-4 py-3 border-b border-slate-50 ${m.is_jathedar ? 'bg-amber-50/40' : ''}`}>
+                        <span className="text-[10px] text-slate-300 w-6 text-right flex-shrink-0">{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium text-slate-800 truncate">{m.name}</p>
+                            <Badge variant={m.gender === 'M' ? 'navy' : 'maroon'} className="text-[9px] flex-shrink-0">{m.gender}</Badge>
+                            {m.is_jathedar && <Badge variant="gold" className="text-[9px] flex-shrink-0">★ Jathedar</Badge>}
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-mono">{m.display_id}</p>
+                          <p className="text-[10px] text-slate-400">{m.father_name ?? '—'} · Age {m.age ?? '—'}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {members.length > 0 && (
-            <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 flex justify-between text-xs text-slate-500">
-              <span>Total: {members.length}</span>
-              <span>M: {maleCount} · F: {femaleCount}</span>
-            </div>
+                )
+              })}
+
+              {/* Grand total */}
+              <div className="px-4 py-3 bg-slate-50 flex justify-between text-xs font-medium text-slate-600">
+                <span>Total: {members.length}</span>
+                <span>M:{members.filter(m=>m.gender==='M').length} · F:{members.filter(m=>m.gender==='F').length}</span>
+              </div>
+            </>
           )}
         </div>
       )}
