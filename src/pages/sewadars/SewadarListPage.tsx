@@ -106,10 +106,14 @@ export default function SewadarListPage() {
   useEffect(() => { setPage(0) }, [filters])
 
   const handleFilterChange = (key: keyof Filters, value: string) => {
+    setPage(0)
     setFilters(prev => ({ ...prev, [key]: value }))
   }
 
-  const clearFilters = () => setFilters(DEFAULT_FILTERS)
+  const clearFilters = () => {
+    setPage(0)
+    setFilters(DEFAULT_FILTERS)
+  }
 
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length
 

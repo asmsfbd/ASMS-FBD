@@ -16,7 +16,8 @@ export default function Login() {
   // If already logged in, go to dashboard
   useEffect(() => {
     if (user) navigate('/dashboard', { replace: true })
-  }, [user, navigate])
+    else clearError()
+  }, [user, navigate, clearError])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

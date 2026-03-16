@@ -29,6 +29,7 @@ export default function SangatFormPage() {
 
   const [form,        setForm]        = useState<SangatForm>(EMPTY_FORM)
   const [loading,     setLoading]     = useState(isEdit)
+  const [notFound,    setNotFound]   = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
   const [dupCheck,    setDupCheck]    = useState<{ found: boolean; name?: string; id?: string } | null>(null)
@@ -45,20 +46,23 @@ export default function SangatFormPage() {
 
     if (isEdit && id) {
       supabase.from('sangat').select('*').eq('id', id).single()
-        .then(({ data }) => {
-          if (data) {
-            setForm({
-              name:          data.name,
-              father_name:   data.father_name ?? '',
-              gender:        data.gender,
-              age:           data.age?.toString() ?? '',
-              mobile:        data.mobile ?? '',
-              address:       data.address ?? '',
-              aadhaar:       '',
-              aadhaar_last4: data.aadhaar_last4,
-              centre:        data.centre,
-            })
+        .then(({ data, error }) => {
+          if (error || !data) {
+            setNotFound(true)
+            setLoading(false)
+            return
           }
+          setForm({
+            name:          data.name,
+            father_name:   data.father_name ?? '',
+            gender:        data.gender,
+            age:           data.age?.toString() ?? '',
+            mobile:        data.mobile ?? '',
+            address:       data.address ?? '',
+            aadhaar:       '',
+            aadhaar_last4: data.aadhaar_last4,
+            centre:        data.centre,
+          })
           setLoading(false)
         })
     }
@@ -175,6 +179,23 @@ export default function SangatFormPage() {
       <div className="max-w-lg mx-auto space-y-4">
         <div className="h-10 bg-slate-100 rounded-xl animate-pulse w-1/2" />
         <div className="h-64 bg-slate-100 rounded-xl animate-pulse" />
+      </div>
+    )
+  }
+
+  if (notFound) {
+    return (
+      <div className="max-w-lg mx-auto space-y-4">
+        <div className="flex items-center gap-2">
+          <Link to="/sangat" className="p-2 rounded-xl bg-slate-100 text-slate-600 active:bg-slate-200 touch-manipulation">
+            <ChevronLeft size={18} />
+          </Link>
+          <h1 className="text-base font-semibold text-slate-800">Sangat Not Found</h1>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+          <p className="text-red-600 text-sm">The requested sangat record was not found.</p>
+          <Link to="/sangat" className="text-maroon-600 text-sm mt-2 inline-block">← Back to Sangat List</Link>
+        </div>
       </div>
     )
   }

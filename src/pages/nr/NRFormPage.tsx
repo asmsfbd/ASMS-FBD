@@ -334,6 +334,12 @@ export default function NRFormPage() {
       }
 
       await upsertMySection(nrId, false)
+
+      const { data: refreshedMembers } = await supabase
+        .from('nr_members').select('*').eq('nominal_role_id', nrId)
+      if (refreshedMembers) {
+        setMembers(refreshedMembers as NRMember[])
+      }
     } catch (err: any) {
       setError(err.message ?? 'Failed to save')
     } finally { setSaving(false) }

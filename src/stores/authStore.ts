@@ -74,7 +74,8 @@ export const useAuthStore = create<AuthState>()(
           }
 
           set({ user: appUser, loading: false, error: null })
-        } catch {
+        } catch (err) {
+          console.error('Login error:', err)
           set({ error: 'Connection error. Please check your internet.', loading: false })
         }
       },

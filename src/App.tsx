@@ -28,7 +28,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function RequireRole({ roles, children }: { roles: Role[]; children: React.ReactNode }) {
   const { user } = useAuth()
   if (!user) return <Navigate to="/login" replace />
-  if (!roles.includes(user.role)) return <Navigate to="/dashboard" replace />
+  if (!roles.includes(user.role)) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 

@@ -246,7 +246,7 @@ export default function ScannerDashboard() {
       setScanState({ status: 'error', message: 'System error — try again' })
       scheduleReset()
     }
-  }, [user, mode, scheduleReset])
+  }, [user, mode, scheduleReset, showModal])
 
   // ── Confirm the scan and write to DB ──────────────────────────
   const confirmScan = async () => {

@@ -103,6 +103,7 @@ export default function JathaScheduleFormPage() {
 
   // For centre admin: their quota from this schedule
   const [myQuota,        setMyQuota]        = useState(0)
+  const [pendingDept,    setPendingDept]    = useState<string | null>(null)
 
   const isASO = user?.role === 'aso'
 
@@ -125,6 +126,15 @@ export default function JathaScheduleFormPage() {
         setAllTypes(types)
         const dests = Array.from(new Set(types.map(t => t.destination)))
         setDestinations(dests)
+
+        if (pendingDept && selectedDest) {
+          const match = types.find(t => t.destination === selectedDest && t.department === pendingDept)
+          if (match) {
+            setSelectedDept(pendingDept)
+            setSelectedTypeId(match.id)
+          }
+          setPendingDept(null)
+        }
       })
   }, [])
 
@@ -170,8 +180,18 @@ export default function JathaScheduleFormPage() {
         setTotalRequired(s.total_required)
         setDescription(s.description ?? '')
         setSelectedDest(s.destination)
-        // Department set after allTypes loads
-        setTimeout(() => setSelectedDept(s.department), 150)
+
+        if (allTypes.length > 0) {
+          const match = allTypes.find(t => t.destination === s.destination && t.department === s.department)
+          if (match) {
+            setSelectedDept(s.department)
+            setSelectedTypeId(match.id)
+          } else {
+            setPendingDept(s.department)
+          }
+        } else {
+          setPendingDept(s.department)
+        }
 
         // Map existing quotas
         const dbMap = new Map(
@@ -197,7 +217,7 @@ export default function JathaScheduleFormPage() {
       }
     }
     load()
-  }, [isEdit, id, user])
+  }, [isEdit, id, user, allTypes])
 
   const updateQuota = (centre: string, val: string) => {
     const n = Math.max(0, parseInt(val) || 0)
@@ -209,7 +229,7 @@ export default function JathaScheduleFormPage() {
     if (!user) return
     if (!selectedTypeId)           { setError('Select destination and department'); return }
     if (!fromDate || !toDate)      { setError('Set the dates'); return }
-    if (toDate < fromDate)         { setError('End date must be after start date'); return }
+    if (new Date(toDate) < new Date(fromDate)) { setError('End date must be after start date'); return }
     if (totalRequired <= 0)        { setError('Enter total required count'); return }
     if (activeQuotas.length === 0) { setError('At least one centre must have a count > 0'); return }
     if (totalAssigned > totalRequired) {
