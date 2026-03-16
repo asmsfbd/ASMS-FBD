@@ -74,7 +74,7 @@ export default function NRFormPage() {
   const isOwner = isASO || user?.centre === ownerCentre
   const mySection = sections.find(s => s.centre === user?.centre)
   const iAmReady = mySection?.is_ready ?? false
-  const canAddMembers = nrStatus === 'draft' && !iAmReady
+  const canAddMembers = isASO || (nrStatus === 'draft' && !iAmReady)
   const canSubmitToASO = isOwner && nrStatus === 'draft'
 
   const myMembers = members.filter(m => m.contributing_centre === user?.centre)
