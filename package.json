@@ -12,6 +12,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "@undecaf/barcode-detector-polyfill": "^0.9.23",
+    "docx": "^8.5.0",
+    "file-saver": "^2.0.5",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.363.0",
@@ -22,6 +24,7 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@types/file-saver": "^2.0.7",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
