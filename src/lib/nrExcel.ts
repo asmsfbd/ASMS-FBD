@@ -44,7 +44,15 @@ export interface GenerateExcelOptions {
   sections: SectionForExcel[]
 }
 
-function formatDate(dateStr: string | null): string {
+function formatDateForExcel(dateStr: string | null): number {
+  if (!dateStr) return 0
+  const d = new Date(dateStr)
+  const excelEpoch = new Date(1899, 11, 30)
+  const days = Math.floor((d.getTime() - excelEpoch.getTime()) / (24 * 60 * 60 * 1000))
+  return days
+}
+
+function formatDateDisplay(dateStr: string | null): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   const day = String(d.getDate()).padStart(2, '0')
@@ -66,11 +74,139 @@ function getTodayDate(): string {
   return `${day} ${month} ${year}`
 }
 
-function createSheet(
+function loadTemplate(sheetName: 'Male' | 'Female'): XLSX.WorkSheet {
+  const wb = XLSX.readFile('public/NominalRole_Format.xlsx')
+  return wb.Sheets[sheetName]
+}
+
+function setCell(ws: XLSX.WorkSheet, row: number, col: number, value: any) {
+  const cellRef = XLSX.utils.encode_cell({ r: row - 1, c: col - 1 })
+  if (typeof value === 'number') {
+    ws[cellRef] = { t: 'n', v: value }
+  } else if (typeof value === 'string') {
+    ws[cellRef] = { t: 's', v: value }
+  } else if (value !== null && value !== undefined) {
+    ws[cellRef] = { t: 's', v: String(value) }
+  } else {
+    ws[cellRef] = { t: 's', v: '' }
+  }
+}
+
+function shiftCellDown(ws: XLSX.WorkSheet, fromRow: number, toRow: number, col: number) {
+  if (fromRow === toRow) return
+  
+  const steps = toRow > fromRow ? 1 : -1
+  for (let r = toRow; r !== fromRow; r -= steps) {
+    const srcRef = XLSX.utils.encode_cell({ r: r - steps - 1, c: col - 1 })
+    const destRef = XLSX.utils.encode_cell({ r: r - 1, c: col - 1 })
+    if (ws[srcRef]) {
+      ws[destRef] = { ...ws[srcRef] }
+    }
+  }
+}
+
+function shiftRowsDown(ws: XLSX.WorkSheet, startRow: number, count: number) {
+  const maxRow = 50
+  
+  for (let r = maxRow; r >= startRow; r--) {
+    for (let c = 1; c <= 8; c++) {
+      const srcRef = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 })
+      const destRef = XLSX.utils.encode_cell({ r: r + count - 1, c: c - 1 })
+      if (ws[srcRef]) {
+        ws[destRef] = { ...ws[srcRef] }
+      }
+    }
+  }
+
+  for (let r = startRow; r < startRow + count; r++) {
+    for (let c = 1; c <= 8; c++) {
+      const ref = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 })
+      delete ws[ref]
+    }
+  }
+
+  if (ws['!merges']) {
+    const newMerges: XLSX.Range[] = []
+    for (const merge of ws['!merges']) {
+      if (merge.e.r >= startRow) {
+        newMerges.push({
+          s: { r: merge.s.r, c: merge.s.c },
+          e: { r: merge.e.r + count, c: merge.e.c }
+        })
+      } else {
+        newMerges.push(merge)
+      }
+    }
+    ws['!merges'] = newMerges
+  }
+
+  const ref = XLSX.utils.decode_range(ws['!ref']!)
+  ref.e.r += count
+  ws['!ref'] = XLSX.utils.encode_range(ref.s, ref.e)
+}
+
+function populateSheet(
+  ws: XLSX.WorkSheet,
+  nr: NRForExcel,
+  members: (MemberForExcel & { srs_id: string | null })[]
+) {
+  setCell(ws, 7, 3, nr.centre)
+  setCell(ws, 8, 3, nr.jathedar_name || '')
+  setCell(ws, 9, 3, nr.jathedar_phone || '')
+  setCell(ws, 10, 3, nr.destination || '')
+  setCell(ws, 10, 6, nr.department || '')
+  
+  const driverMobile = nr.driver_name && nr.driver_mobile 
+    ? `${nr.driver_name} | ${nr.driver_mobile}` 
+    : (nr.driver_name || '')
+  setCell(ws, 8, 8, driverMobile)
+  setCell(ws, 9, 8, nr.vehicle_type || '')
+
+  const days = calculateDays(nr.from_date, nr.to_date)
+  setCell(ws, 12, 4, days)
+  setCell(ws, 12, 6, formatDateForExcel(nr.from_date))
+  setCell(ws, 12, 8, formatDateForExcel(nr.to_date))
+
+  const dataStartRow = 14
+  
+  members.forEach((m, idx) => {
+    const row = dataStartRow + idx
+    const idDisplay = m.member_type === 'sangat' && m.aadhaar_masked ? m.aadhaar_masked : m.display_id
+    const addressPhone = [m.address, m.mobile].filter(Boolean).join('\n')
+    const centreSrs = m.srs_id ? `${m.contributing_centre}\nSRS: ${m.srs_id}` : m.contributing_centre
+
+    setCell(ws, row, 1, idx + 1)
+    setCell(ws, row, 2, idDisplay)
+    setCell(ws, row, 3, m.name)
+    setCell(ws, row, 4, m.father_name || '')
+    setCell(ws, row, 5, m.gender)
+    setCell(ws, row, 6, m.age || '')
+    setCell(ws, row, 7, addressPhone)
+    setCell(ws, row, 8, centreSrs)
+  })
+
+  const maleCount = members.filter(m => m.gender.toUpperCase() === 'M').length
+  const femaleCount = members.filter(m => m.gender.toUpperCase() === 'F').length
+  const totalCount = maleCount + femaleCount
+
+  setCell(ws, 16, 5, maleCount)
+  setCell(ws, 16, 6, femaleCount)
+  setCell(ws, 15, 7, totalCount)
+
+  const todayDate = getTodayDate()
+  setCell(ws, 26, 8, `( Stamp ) Date : ${todayDate}`)
+
+  setCell(ws, 31, 5, `: ${formatDateDisplay(nr.from_date)}`)
+  setCell(ws, 32, 5, `: ${formatDateDisplay(nr.to_date)}`)
+}
+
+function processSheet(
   sheetName: 'Male' | 'Female',
   nr: NRForExcel,
   sections: SectionForExcel[]
 ): XLSX.WorkSheet {
+  const ws = loadTemplate(sheetName)
+
   const genderFilter = sheetName === 'Male' ? 'M' : 'F'
   
   const allMembers: (MemberForExcel & { srs_id: string | null })[] = []
@@ -83,176 +219,15 @@ function createSheet(
       })
   })
 
-  const totalCount = allMembers.length
-  const days = calculateDays(nr.from_date, nr.to_date)
-  const todayDate = getTodayDate()
-
-  const ws: any = {}
-
-  ws['!ref'] = 'A1:H32'
-  ws['!merges'] = [
-    { s: { r: 0, c: 7 }, e: { r: 0, c: 7 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } },
-    { s: { r: 6, c: 0 }, e: { r: 6, c: 4 } },
-    { s: { r: 6, c: 5 }, e: { r: 6, c: 6 } },
-    { s: { r: 7, c: 0 }, e: { r: 7, c: 1 } },
-    { s: { r: 7, c: 4 }, e: { r: 7, c: 5 } },
-    { s: { r: 8, c: 0 }, e: { r: 8, c: 1 } },
-    { s: { r: 8, c: 4 }, e: { r: 8, c: 5 } },
-    { s: { r: 9, c: 0 }, e: { r: 9, c: 1 } },
-    { s: { r: 9, c: 4 }, e: { r: 9, c: 5 } },
-    { s: { r: 11, c: 0 }, e: { r: 11, c: 2 } },
-    { s: { r: 11, c: 3 }, e: { r: 11, c: 3 } },
-    { s: { r: 11, c: 5 }, e: { r: 11, c: 6 } },
-    { s: { r: 11, c: 7 }, e: { r: 11, c: 7 } },
-    { s: { r: 12, c: 0 }, e: { r: 12, c: 0 } },
-    { s: { r: 12, c: 1 }, e: { r: 12, c: 1 } },
-    { s: { r: 12, c: 2 }, e: { r: 12, c: 2 } },
-    { s: { r: 12, c: 3 }, e: { r: 12, c: 3 } },
-    { s: { r: 12, c: 4 }, e: { r: 12, c: 4 } },
-    { s: { r: 12, c: 5 }, e: { r: 12, c: 5 } },
-    { s: { r: 12, c: 6 }, e: { r: 12, c: 6 } },
-    { s: { r: 12, c: 7 }, e: { r: 12, c: 7 } },
-    { s: { r: 23, c: 0 }, e: { r: 23, c: 1 } },
-    { s: { r: 23, c: 4 }, e: { r: 23, c: 4 } },
-    { s: { r: 23, c: 7 }, e: { r: 23, c: 7 } },
-    { s: { r: 24, c: 1 }, e: { r: 24, c: 2 } },
-    { s: { r: 24, c: 7 }, e: { r: 24, c: 7 } },
-    { s: { r: 25, c: 1 }, e: { r: 25, c: 2 } },
-    { s: { r: 25, c: 7 }, e: { r: 25, c: 7 } },
-    { s: { r: 26, c: 1 }, e: { r: 26, c: 2 } },
-    { s: { r: 26, c: 7 }, e: { r: 26, c: 7 } },
-    { s: { r: 30, c: 0 }, e: { r: 30, c: 2 } },
-    { s: { r: 30, c: 3 }, e: { r: 30, c: 7 } },
-    { s: { r: 31, c: 0 }, e: { r: 31, c: 2 } },
-    { s: { r: 31, c: 3 }, e: { r: 31, c: 7 } },
-  ]
-
-  const centerAlign = { alignment: { horizontal: 'center' } }
-  const leftAlign = { alignment: { horizontal: 'left' } }
-  const bold = { font: { bold: true } }
-  const boldCenter = { ...bold, ...centerAlign }
-  const borderThin = {
-    border: {
-      top: { style: 'thin' },
-      bottom: { style: 'thin' },
-      left: { style: 'thin' },
-      right: { style: 'thin' }
-    }
-  }
-  const borderMedium = {
-    border: {
-      top: { style: 'medium' },
-      bottom: { style: 'medium' },
-      left: { style: 'medium' },
-      right: { style: 'medium' }
-    }
+  const dataStartRow = 14
+  const maxEmptyRows = 1
+  
+  if (allMembers.length > maxEmptyRows) {
+    const rowsToInsert = allMembers.length - maxEmptyRows
+    shiftRowsDown(ws, dataStartRow, rowsToInsert)
   }
 
-  const setCell = (row: number, col: number, value: any, style?: any) => {
-    const cellRef = XLSX.utils.encode_cell({ r: row - 1, c: col - 1 })
-    ws[cellRef] = { v: value, ...style }
-  }
-
-  setCell(1, 8, 'SCI/2020/84', { alignment: { horizontal: 'right' } })
-  setCell(2, 1, 'SATSANG CENTRES IN INDIA', { font: { bold: true, size: 14 }, alignment: { horizontal: 'center' } })
-  setCell(3, 1, `NOMINAL ROLL OF JATHA ${sheetName.toUpperCase()}`, { font: { bold: true, size: 12 }, alignment: { horizontal: 'center' } })
-
-  setCell(7, 1, 'Name of Satsang Place', { ...bold })
-  setCell(7, 2, ':')
-  setCell(7, 3, nr.centre, { ...bold })
-  setCell(7, 6, 'Area : FARIDABAD')
-  setCell(7, 8, 'ZONE: III')
-
-  setCell(8, 1, 'Name of Jathedar', { ...bold })
-  setCell(8, 2, ':')
-  setCell(8, 3, nr.jathedar_name || '', { ...bold })
-  setCell(8, 6, 'Name of Driver & Mobile No')
-  setCell(8, 7, ':')
-  setCell(8, 8, nr.driver_name && nr.driver_mobile ? `${nr.driver_name} | ${nr.driver_mobile}` : (nr.driver_name || ''))
-
-  setCell(9, 1, 'Mobile No', { ...bold })
-  setCell(9, 2, ':')
-  setCell(9, 3, nr.jathedar_phone || '')
-  setCell(9, 6, 'Type of Vehicle / Vehicle No')
-  setCell(9, 7, ':')
-  setCell(9, 8, nr.vehicle_type || '')
-
-  setCell(10, 1, 'Place of Sewa', { ...bold })
-  setCell(10, 2, ':')
-  setCell(10, 3, nr.destination || '', { ...bold })
-  setCell(10, 6, 'Department')
-  setCell(10, 7, ':')
-  setCell(10, 8, nr.department || '')
-
-  setCell(12, 1, 'Sewa duration (No_Of_Days)', { ...bold })
-  setCell(12, 4, days, { ...boldCenter })
-  setCell(12, 6, formatDate(nr.from_date), { ...bold })
-  setCell(12, 8, formatDate(nr.to_date), { ...bold })
-
-  setCell(13, 1, 'Sno', { ...boldCenter, ...borderThin })
-  setCell(13, 2, 'Badge Number / Aadhaar Number', { ...boldCenter, ...borderThin })
-  setCell(13, 3, 'Name Of Sewadar', { ...boldCenter, ...borderThin })
-  setCell(13, 4, "Father's Name", { ...boldCenter, ...borderThin })
-  setCell(13, 5, 'M / F', { ...boldCenter, ...borderThin })
-  setCell(13, 6, 'Age', { ...boldCenter, ...borderThin })
-  setCell(13, 7, 'Address & Phone No', { ...boldCenter, ...borderThin })
-  setCell(13, 8, 'Centre / SRS Id', { ...boldCenter, ...borderThin })
-
-  let rowIdx = 14
-  allMembers.forEach((m, idx) => {
-    const idDisplay = m.member_type === 'sangat' && m.aadhaar_masked ? m.aadhaar_masked : m.display_id
-    const addressPhone = [m.address, m.mobile].filter(Boolean).join('\n')
-    const centreSrs = m.srs_id ? `${m.contributing_centre}\n${m.srs_id}` : m.contributing_centre
-
-    setCell(rowIdx, 1, idx + 1, { ...centerAlign, ...borderThin })
-    setCell(rowIdx, 2, idDisplay, { ...borderThin })
-    setCell(rowIdx, 3, m.name, { ...borderThin })
-    setCell(rowIdx, 4, m.father_name || '', { ...borderThin })
-    setCell(rowIdx, 5, m.gender, { ...centerAlign, ...borderThin })
-    setCell(rowIdx, 6, m.age || '', { ...centerAlign, ...borderThin })
-    setCell(rowIdx, 7, addressPhone, { ...borderThin })
-    setCell(rowIdx, 8, centreSrs, { ...borderThin })
-    rowIdx++
-  })
-
-  const totalRow = 14 + Math.max(allMembers.length, 1)
-  setCell(totalRow, 3, 'TOTAL SEWADARS', { ...boldCenter })
-  setCell(totalRow, 5, 'M', { ...boldCenter })
-  setCell(totalRow, 6, 'F', { ...boldCenter })
-
-  const countRow = totalRow + 1
-  setCell(countRow, 2, '', { ...borderMedium })
-  setCell(countRow, 3, '', { ...borderMedium })
-  setCell(countRow, 4, '', { ...borderMedium })
-  setCell(countRow, 5, sheetName === 'Male' ? totalCount : '', { ...boldCenter, ...borderMedium })
-  setCell(countRow, 6, sheetName === 'Female' ? totalCount : '', { ...boldCenter, ...borderMedium })
-  setCell(countRow, 7, '', { ...borderMedium })
-  setCell(countRow, 8, '', { ...borderMedium })
-
-  setCell(24, 2, 'Signature of Jathedar', { ...bold })
-  setCell(25, 2, 'Name', { ...bold })
-  setCell(25, 8, 'Secretary / Area Secretary', { ...boldCenter })
-  setCell(26, 2, 'Date', { ...bold })
-  setCell(26, 8, `( Stamp ) Date : ${todayDate}`, { ...centerAlign })
-
-  setCell(31, 1, 'Arrival Date & Time', { ...bold })
-  setCell(31, 4, `: ${formatDate(nr.from_date)}`, { ...bold })
-  setCell(32, 1, 'Departure Date & Time', { ...bold })
-  setCell(32, 4, `: ${formatDate(nr.to_date)}`, { ...bold })
-
-  const colWidths = [
-    { wch: 8 },
-    { wch: 20 },
-    { wch: 25 },
-    { wch: 20 },
-    { wch: 8 },
-    { wch: 8 },
-    { wch: 25 },
-    { wch: 20 },
-  ]
-  ws['!cols'] = colWidths
+  populateSheet(ws, nr, allMembers)
 
   return ws
 }
@@ -262,8 +237,8 @@ export async function generateNRExcel(opts: GenerateExcelOptions): Promise<void>
 
   const wb = XLSX.utils.book_new()
 
-  const maleSheet = createSheet('Male', nr, sections)
-  const femaleSheet = createSheet('Female', nr, sections)
+  const maleSheet = processSheet('Male', nr, sections)
+  const femaleSheet = processSheet('Female', nr, sections)
 
   XLSX.utils.book_append_sheet(wb, maleSheet, 'Male')
   XLSX.utils.book_append_sheet(wb, femaleSheet, 'Female')
